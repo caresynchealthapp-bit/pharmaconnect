@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PharmaConnect | Multi-Tenant Pharmacy Inventory System</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <!-- Supabase JS SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- Custom Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container"></div>
+
+    <!-- ==================== TOP NAVIGATION BAR ==================== -->
+    <header class="navbar" id="main-navbar">
+        <div class="nav-container">
+            <a href="#" class="brand-logo" onclick="navigateTo('home')">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-mortar-pestle"></i>
+                </div>
+                <span>Pharma<span class="brand-highlight">Connect</span></span>
+            </a>
+
+            <nav class="nav-links">
+                <a href="#home" onclick="navigateTo('home')" class="nav-link active">Home</a>
+                <a href="#about-section" onclick="scrollToAbout(event)" class="nav-link">About Us</a>
+                <a href="#features-section" onclick="scrollToAbout(event)" class="nav-link">Features</a>
+                <a href="#contact-section" onclick="scrollToAbout(event)" class="nav-link">Support</a>
+            </nav>
+
+            <div class="nav-actions">
+                <button class="btn-register-nav" onclick="navigateTo('register')">
+                    <i class="fa-solid fa-plus-circle"></i> Register Pharmacy
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ==================== VIEW 1: MAIN FRONT PAGE ==================== -->
+    <main id="view-home" class="view-section active">
+        <!-- Hero & Mid-Upper Center Search Section -->
+        <section class="hero-section">
+            <div class="hero-overlay"></div>
+            <div class="hero-content">
+                <span class="hero-badge">
+                    <i class="fa-solid fa-shield-heart"></i> Unified Cloud Pharmacy Management Network
+                </span>
+                <h1 class="hero-title">Pharma<span>Connect</span></h1>
+                <p class="hero-subtitle">
+                    Select your registered pharmacy below to access your Admin, Point-of-Sale Cashier, and Goods Received Note (GRN) inventory portals.
+                </p>
+
+                <!-- Center Search Bar -->
+                <div class="search-wrapper">
+                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                    <input 
+                        type="text" 
+                        id="pharmacy-search-input" 
+                        placeholder="Search for your pharmacy by name, city, or license number..." 
+                        autocomplete="off"
+                    >
+                    <button id="clear-search-btn" class="clear-search-btn hidden" title="Clear search">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Registered Pharmacy Tiles Section -->
+        <section class="directory-section">
+            <div class="container">
+                <div class="directory-header">
+                    <div>
+                        <h2>Registered Pharmacies</h2>
+                        <p>Click on your pharmacy tile to launch its dedicated operations portal</p>
+                    </div>
+                    <span id="pharmacy-count-badge" class="count-badge">0 Pharmacies</span>
+                </div>
+
+                <!-- Dynamic Grid of Pharmacy Tiles -->
+                <div id="pharmacy-tiles-grid" class="pharmacy-grid">
+                    <!-- Populated dynamically via script.js -->
+                </div>
+
+                <!-- Empty Search State -->
+                <div id="no-results-state" class="empty-state hidden">
+                    <i class="fa-solid fa-store-slash"></i>
+                    <h3>No Matching Pharmacies Found</h3>
+                    <p>We couldn't find a pharmacy matching your search query. Try another keyword or register a new branch.</p>
+                    <button class="btn-primary" onclick="navigateTo('register')">Register New Pharmacy</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- About Us & Platform Features Section -->
+        <section id="about-section" class="about-section">
+            <div class="container">
+                <div class="about-grid">
+                    <div class="about-image-wrapper">
+                        <img src="https://images.unsplash.com/photo-1587854692152-cbe660dbde88?auto=format&fit=crop&w=1000&q=80" alt="Modern Pharmacy Operations">
+                        <div class="about-floating-card">
+                            <i class="fa-solid fa-boxes-stacked"></i>
+                            <div>
+                                <strong>Real-Time Stock Sync</strong>
+                                <span>Multi-branch GRN & POS integration</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="about-text">
+                        <span class="section-tag">ABOUT PHARMACONNECT</span>
+                        <h2>Next-Generation Inventory & POS Infrastructure for Modern Pharmacies</h2>
+                        <p>
+                            PharmaConnect is an enterprise multi-tenant pharmacy management ecosystem designed to streamline pharmaceutical inventory, batch expiry tracking, supplier Goods Received Notes (GRN), and rapid cashier billing under one unified cloud platform.
+                        </p>
+                        <div class="feature-list" id="features-section">
+                            <div class="feature-item">
+                                <div class="feature-icon"><i class="fa-solid fa-user-shield"></i></div>
+                                <div>
+                                    <h4>Role-Isolated Access Control</h4>
+                                    <p>Dedicated portals for Pharmacy Admins, POS Cashiers, and GRN Inventory Officers.</p>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <div class="feature-icon"><i class="fa-solid fa-location-dot"></i></div>
+                                <div>
+                                    <h4>Geolocation & Multi-Branch Ready</h4>
+                                    <p>Built-in GPS coordinates and location indexing for future customer medicine availability discovery.</p>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <div class="feature-icon"><i class="fa-solid fa-clipboard-check"></i></div>
+                                <div>
+                                    <h4>Automated GRN & Expiry Alerts</h4>
+                                    <p>Track batch numbers, supplier invoices, wholesale discounts, and near-expiry pharmaceuticals effortlessly.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer id="contact-section" class="footer">
+            <div class="container footer-content">
+                <div>
+                    <div class="brand-logo footer-logo">
+                        <div class="logo-icon"><i class="fa-solid fa-mortar-pestle"></i></div>
+                        <span>Pharma<span class="brand-highlight">Connect</span></span>
+                    </div>
+                    <p>Cloud-Based Multi-Tenant Pharmacy Inventory & Point-of-Sale System.</p>
+                </div>
+                <div class="footer-right">
+                    <p>&copy; 2026 PharmaConnect Project. Powered by Supabase.</p>
+                </div>
+            </div>
+        </footer>
+    </main>
+
+    <!-- ==================== VIEW 2: REGISTER PHARMACY PAGE ==================== -->
+    <section id="view-register" class="view-section">
+        <div class="register-container">
+            <!-- Left Visual Banner -->
+            <div class="register-banner">
+                <div class="register-banner-overlay"></div>
+                <div class="register-banner-content">
+                    <button class="btn-back-light" onclick="navigateTo('home')">
+                        <i class="fa-solid fa-arrow-left"></i> Back to Front Page
+                    </button>
+                    <div class="banner-middle">
+                        <span class="badge-pill">Partner Onboarding</span>
+                        <h2>Register Your Pharmacy on PharmaConnect</h2>
+                        <p>Set up your digital pharmacy workspace. Once registered, your pharmacy tile will immediately appear on the directory and you can configure Cashier and GRN staff credentials from your Admin dashboard.</p>
+                        
+                        <ul class="onboarding-steps">
+                            <li><i class="fa-solid fa-circle-check"></i> Instant cloud workspace provisioning</li>
+                            <li><i class="fa-solid fa-circle-check"></i> Precise GPS & address location pinning</li>
+                            <li><i class="fa-solid fa-circle-check"></i> Master Admin account creation via Supabase Auth</li>
+                        </ul>
+                    </div>
+                    <div class="banner-footer">
+                        <small><i class="fa-solid fa-lock"></i> End-to-end encrypted via Supabase Security</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Form Area -->
+            <div class="register-form-wrapper">
+                <div class="form-header">
+                    <h2>Pharmacy Registration</h2>
+                    <p>Complete the details below to deploy your pharmacy management portal.</p>
+                </div>
+
+                <form id="register-pharmacy-form">
+                    <!-- 1. Pharmacy Identity Details -->
+                    <div class="form-section-title">
+                        <i class="fa-solid fa-clinic-medical"></i> Pharmacy Information
+                    </div>
+                    <div class="form-grid-2">
+                        <div class="form-group">
+                            <label for="reg-pharmacy-name">Pharmacy Name *</label>
+                            <input type="text" id="reg-pharmacy-name" required placeholder="e.g., MediCare Central Pharmacy">
+                        </div>
+                        <div class="form-group">
+                            <label for="reg-license-no">NMRA / Pharmacy Reg. Number *</label>
+                            <input type="text" id="reg-license-no" required placeholder="e.g., PH-SL-2026-849">
+                        </div>
+                    </div>
+
+                    <div class="form-grid-2">
+                        <div class="form-group">
+                            <label for="reg-phone">Contact Number *</label>
+                            <input type="tel" id="reg-phone" required placeholder="e.g., +94 11 234 5678">
+                        </div>
+                        <div class="form-group">
+                            <label for="reg-hours">Operating Hours *</label>
+                            <select id="reg-hours" required>
+                                <option value="24/7 Open">Open 24 Hours (24/7)</option>
+                                <option value="8:00 AM - 10:00 PM" selected>8:00 AM – 10:00 PM</option>
+                                <option value="8:00 AM - 8:00 PM">8:00 AM – 8:00 PM</option>
+                                <option value="9:00 AM - 9:00 PM">9:00 AM – 9:00 PM</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- 2. Pharmacy Location Details (Crucial for long-run features) -->
+                    <div class="form-section-title">
+                        <i class="fa-solid fa-map-location-dot"></i> Location & Coordinates
+                    </div>
+                    <div class="form-grid-2">
+                        <div class="form-group">
+                            <label for="reg-city">City / Town *</label>
+                            <input type="text" id="reg-city" required placeholder="e.g., Moratuwa, Colombo">
+                        </div>
+                        <div class="form-group">
+                            <label for="reg-address">Street Address *</label>
+                            <input type="text" id="reg-address" required placeholder="e.g., No. 142, Galle Road">
+                        </div>
+                    </div>
+
+                    <div class="location-picker-box">
+                        <div class="location-coords">
+                            <div class="form-group">
+                                <label for="reg-lat">Latitude</label>
+                                <input type="text" id="reg-lat" placeholder="e.g., 6.7951" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="reg-lng">Longitude</label>
+                                <input type="text" id="reg-lng" placeholder="e.g., 79.9009" readonly>
+                            </div>
+                        </div>
+                        <button type="button" id="btn-detect-gps" class="btn-gps" onclick="detectLocation()">
+                            <i class="fa-solid fa-location-crosshairs"></i> Detect Current GPS Location
+                        </button>
+                        <small id="gps-status-text" class="gps-hint">
+                            Pinning exact coordinates helps customers locate your pharmacy and stock in future updates.
+                        </small>
+                    </div>
+
+                    <div class="form-group" style="margin-top: 14px;">
+                        <label for="reg-image-url">Storefront / Cover Image URL (Optional)</label>
+                        <input type="url" id="reg-image-url" placeholder="Leave blank to use default professional pharmacy image">
+                    </div>
+
+                    <!-- 3. Master Admin Credentials (Supabase Auth + Admin Login) -->
+                    <div class="form-section-title">
+                        <i class="fa-solid fa-user-lock"></i> Master Admin Credentials
+                    </div>
+                    <div class="form-grid-2">
+                        <div class="form-group">
+                            <label for="reg-admin-email">Admin Email (Supabase Auth) *</label>
+                            <input type="email" id="reg-admin-email" required placeholder="admin@pharmacy.lk">
+                        </div>
+                        <div class="form-group">
+                            <label for="reg-admin-username">Admin Username *</label>
+                            <input type="text" id="reg-admin-username" required placeholder="e.g., medicare_admin">
+                        </div>
+                    </div>
+
+                    <div class="form-grid-2">
+                        <div class="form-group">
+                            <label for="reg-admin-password">Admin Password *</label>
+                            <input type="password" id="reg-admin-password" required minlength="6" placeholder="Min. 6 characters">
+                        </div>
+                        <div class="form-group">
+                            <label for="reg-admin-confirm">Confirm Password *</label>
+                            <input type="password" id="reg-admin-confirm" required minlength="6" placeholder="Re-enter password">
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary" onclick="navigateTo('home')">Cancel</button>
+                        <button type="submit" id="btn-submit-register" class="btn-primary">
+                            <i class="fa-solid fa-cloud-arrow-up"></i> Complete Registration
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== VIEW 3: SPECIFIC PHARMACY PORTAL (3 TILES) ==================== -->
+    <section id="view-pharmacy-portal" class="view-section portal-bg">
+        <div class="portal-overlay"></div>
+        
+        <div class="portal-container">
+            <!-- Top Bar inside Pharmacy Workspace -->
+            <div class="portal-topbar">
+                <button class="btn-glass-back" onclick="navigateTo('home')">
+                    <i class="fa-solid fa-arrow-left"></i> Back to Pharmacy Directory
+                </button>
+                <div class="portal-status-pill">
+                    <span class="status-dot"></span> System Online
+                </div>
+            </div>
+
+            <!-- Selected Pharmacy Header Info -->
+            <div class="portal-header">
+                <span id="portal-pharmacy-license" class="portal-license-tag">REG: PH-0000</span>
+                <h1 id="portal-pharmacy-name">Pharmacy Name</h1>
+                <p id="portal-pharmacy-location">
+                    <i class="fa-solid fa-location-dot"></i> <span>Location Address</span>
+                </p>
+            </div>
+
+            <!-- THREE MAIN SYSTEM TILES IN THE MIDDLE -->
+            <div class="role-tiles-wrapper">
+                <!-- Tile 1: Admin -->
+                <div class="role-tile" onclick="openRoleLogin('Admin')">
+                    <div class="role-tile-icon admin-accent">
+                        <i class="fa-solid fa-user-tie"></i>
+                    </div>
+                    <div class="role-tile-body">
+                        <span class="role-step-tag">Master Control</span>
+                        <h3>Admin</h3>
+                        <p>Manage pharmacy settings, full medicine inventory, financial analytics, and create accounts for Cashier & GRN staff.</p>
+                    </div>
+                    <div class="role-tile-footer">
+                        <span>Launch Admin Portal</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </div>
+                </div>
+
+                <!-- Tile 2: Cashier -->
+                <div class="role-tile" onclick="openRoleLogin('Cashier')">
+                    <div class="role-tile-icon cashier-accent">
+                        <i class="fa-solid fa-cash-register"></i>
+                    </div>
+                    <div class="role-tile-body">
+                        <span class="role-step-tag">Point of Sale</span>
+                        <h3>Cashier</h3>
+                        <p>Fast barcode billing, customer prescription fulfillment, batch selection, discount handling, and receipt printing.</p>
+                    </div>
+                    <div class="role-tile-footer">
+                        <span>Launch Cashier POS</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </div>
+                </div>
+
+                <!-- Tile 3: GRN System -->
+                <div class="role-tile" onclick="openRoleLogin('GRN System')">
+                    <div class="role-tile-icon grn-accent">
+                        <i class="fa-solid fa-truck-ramp-box"></i>
+                    </div>
+                    <div class="role-tile-body">
+                        <span class="role-step-tag">Stock Intake</span>
+                        <h3>GRN System</h3>
+                        <p>Record Goods Received Notes, supplier invoices, batch numbers, manufacturing/expiry dates, and wholesale cost updates.</p>
+                    </div>
+                    <div class="role-tile-footer">
+                        <span>Launch GRN System</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== VIEW 4: ROLE LOGIN PAGE ==================== -->
+    <section id="view-role-login" class="view-section portal-bg">
+        <div class="portal-overlay"></div>
+
+        <div class="login-page-container">
+            <div class="login-glass-card">
+                <button class="btn-back-inline" onclick="navigateTo('portal')">
+                    <i class="fa-solid fa-chevron-left"></i> Back to Role Selection
+                </button>
+
+                <div class="login-card-header">
+                    <div id="login-role-icon" class="login-role-icon">
+                        <i class="fa-solid fa-user-shield"></i>
+                    </div>
+                    <span id="login-pharmacy-badge" class="login-pharmacy-badge">Pharmacy Name</span>
+                    <h2 id="login-role-title">Admin Login</h2>
+                    <p id="login-role-subtitle">Enter your authorized credentials to access this workspace.</p>
+                </div>
+
+                <!-- First-Time Info Banner -->
+                <div class="login-info-banner">
+                    <i class="fa-solid fa-circle-info"></i>
+                    <span id="login-hint-text">
+                        Sign in using your Pharmacy Admin Username & Password. Once inside the Admin dashboard, you can configure dedicated credentials for Cashier and GRN tables.
+                    </span>
+                </div>
+
+                <form id="role-login-form">
+                    <div class="form-group">
+                        <label for="login-username">Username (or Admin Email)</label>
+                        <div class="input-with-icon">
+                            <i class="fa-solid fa-user"></i>
+                            <input type="text" id="login-username" required placeholder="Enter username" autocomplete="username">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="login-password">Password</label>
+                        <div class="input-with-icon">
+                            <i class="fa-solid fa-key"></i>
+                            <input type="password" id="login-password" required placeholder="Enter password" autocomplete="current-password">
+                        </div>
+                    </div>
+
+                    <button type="submit" id="btn-role-login" class="btn-primary btn-full">
+                        <i class="fa-solid fa-right-to-bracket"></i> Sign In to Workspace
+                    </button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- Custom Script -->
+    <script src="script.js"></script>
+</body>
+</html>
