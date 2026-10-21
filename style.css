@@ -13,7 +13,6 @@
     --white: #ffffff;
     --danger: #ef4444;
     --success: #10b981;
-    --warning: #f59e0b;
     --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08);
     --shadow-md: 0 10px 25px -5px rgba(15, 23, 42, 0.08);
     --shadow-lg: 0 20px 40px -10px rgba(15, 23, 42, 0.16);
@@ -54,7 +53,7 @@ body {
 .view-section {
     display: none;
     min-height: calc(100vh - 76px);
-    animation: fadeIn 0.3s ease;
+    animation: fadeIn 0.25s ease;
 }
 
 .view-section.active {
@@ -62,7 +61,7 @@ body {
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(6px); }
+    from { opacity: 0; transform: translateY(4px); }
     to { opacity: 1; transform: translateY(0); }
 }
 
@@ -71,7 +70,7 @@ body {
     position: sticky;
     top: 0;
     z-index: 1000;
-    background: rgba(255, 255, 255, 0.92);
+    background: rgba(255, 255, 255, 0.94);
     backdrop-filter: blur(12px);
     border-bottom: 1px solid rgba(226, 232, 240, 0.8);
     height: 76px;
@@ -133,6 +132,12 @@ body {
     color: var(--primary);
 }
 
+.nav-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
 .btn-register-nav {
     background: linear-gradient(135deg, var(--primary), var(--primary-hover));
     color: var(--white);
@@ -153,6 +158,28 @@ body {
 .btn-register-nav:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 20px rgba(13, 148, 136, 0.42);
+}
+
+/* ==================== FORM ALERTS ==================== */
+.form-alert {
+    padding: 13px 16px;
+    border-radius: 10px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    margin-bottom: 18px;
+    line-height: 1.5;
+}
+
+.form-alert.error {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #b91c1c;
+}
+
+.form-alert.success {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    color: #15803d;
 }
 
 /* ==================== HERO & CENTER SEARCH BAR ==================== */
@@ -211,7 +238,6 @@ body {
     margin: 0 auto 36px;
 }
 
-/* Center Search Bar right beneath PharmaConnect Name */
 .search-wrapper {
     position: relative;
     max-width: 660px;
@@ -259,12 +285,6 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: var(--transition);
-}
-
-.clear-search-btn:hover {
-    background: #e2e8f0;
-    color: var(--dark-slate);
 }
 
 /* ==================== PHARMACY TILES GRID ==================== */
@@ -418,14 +438,6 @@ body {
     color: var(--primary);
 }
 
-.pharmacy-tile:hover .tile-footer i {
-    transform: translateX(4px);
-}
-
-.tile-footer i {
-    transition: var(--transition);
-}
-
 /* ==================== ABOUT SECTION & FOOTER ==================== */
 .about-section {
     padding: 90px 0;
@@ -524,16 +536,6 @@ body {
     flex-shrink: 0;
 }
 
-.feature-item h4 {
-    font-size: 1.05rem;
-    margin-bottom: 4px;
-}
-
-.feature-item p {
-    font-size: 0.9rem;
-    color: var(--slate-600);
-}
-
 .footer {
     background: var(--dark-slate);
     color: var(--slate-400);
@@ -599,11 +601,6 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    transition: var(--transition);
-}
-
-.btn-back-light:hover {
-    background: rgba(255, 255, 255, 0.25);
 }
 
 .badge-pill {
@@ -656,7 +653,7 @@ body {
 }
 
 .form-header {
-    margin-bottom: 28px;
+    margin-bottom: 24px;
 }
 
 .form-header h2 {
@@ -769,7 +766,7 @@ body {
     gap: 14px;
 }
 
-/* ==================== VIEW 3: SPECIFIC PHARMACY PORTAL (3 TILES) ==================== */
+/* ==================== VIEW 3 & 4: PORTAL & ROLE LOGIN ==================== */
 .portal-bg {
     position: relative;
     min-height: calc(100vh - 76px);
@@ -817,12 +814,6 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    transition: var(--transition);
-}
-
-.btn-glass-back:hover {
-    background: rgba(255, 255, 255, 0.22);
-    transform: translateX(-3px);
 }
 
 .portal-status-pill {
@@ -868,7 +859,6 @@ body {
     font-size: 2.75rem;
     font-weight: 800;
     margin-bottom: 8px;
-    letter-spacing: -0.5px;
 }
 
 .portal-header p {
@@ -876,12 +866,6 @@ body {
     font-size: 1.05rem;
 }
 
-.portal-header p i {
-    color: #2dd4bf;
-    margin-right: 6px;
-}
-
-/* Three Main Tiles in the Middle */
 .role-tiles-wrapper {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -906,7 +890,7 @@ body {
     transform: translateY(-10px);
     background: rgba(255, 255, 255, 0.14);
     border-color: #2dd4bf;
-    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.45), 0 0 25px rgba(45, 212, 191, 0.25);
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.45);
 }
 
 .role-tile-icon {
@@ -922,17 +906,14 @@ body {
 
 .admin-accent {
     background: linear-gradient(135deg, #0d9488, #14b8a6);
-    box-shadow: 0 10px 25px rgba(20, 184, 166, 0.35);
 }
 
 .cashier-accent {
     background: linear-gradient(135deg, #0284c7, #38bdf8);
-    box-shadow: 0 10px 25px rgba(56, 189, 248, 0.35);
 }
 
 .grn-accent {
     background: linear-gradient(135deg, #7c3aed, #a855f7);
-    box-shadow: 0 10px 25px rgba(168, 85, 247, 0.35);
 }
 
 .role-step-tag {
@@ -952,7 +933,6 @@ body {
 .role-tile-body p {
     color: #cbd5e1;
     font-size: 0.94rem;
-    line-height: 1.6;
     margin-bottom: 28px;
 }
 
@@ -966,7 +946,6 @@ body {
     color: #5eead4;
 }
 
-/* ==================== VIEW 4: ROLE LOGIN PAGE ==================== */
 .login-page-container {
     position: relative;
     z-index: 2;
@@ -1001,10 +980,6 @@ body {
     margin-bottom: 20px;
 }
 
-.btn-back-inline:hover {
-    color: var(--primary);
-}
-
 .login-card-header {
     text-align: center;
     margin-bottom: 22px;
@@ -1034,16 +1009,6 @@ body {
     margin-bottom: 8px;
 }
 
-.login-card-header h2 {
-    font-size: 1.65rem;
-    font-weight: 800;
-}
-
-.login-card-header p {
-    font-size: 0.9rem;
-    color: var(--slate-600);
-}
-
 .login-info-banner {
     background: #f0fdfa;
     border: 1px solid #99f6e4;
@@ -1055,11 +1020,6 @@ body {
     gap: 10px;
     align-items: flex-start;
     margin-bottom: 20px;
-}
-
-.login-info-banner i {
-    margin-top: 3px;
-    color: var(--primary);
 }
 
 .input-with-icon {
@@ -1115,11 +1075,6 @@ body {
     font-family: inherit;
     font-weight: 700;
     cursor: pointer;
-    transition: var(--transition);
-}
-
-.btn-secondary:hover {
-    background: #e2e8f0;
 }
 
 .btn-full {
@@ -1136,7 +1091,7 @@ body {
 
 .empty-state i {
     font-size: 3rem;
-    color: var(--slate-400);
+    color: var(--primary);
     margin-bottom: 14px;
 }
 
@@ -1171,35 +1126,18 @@ body {
     font-size: 0.92rem;
     font-weight: 600;
     border-left: 4px solid var(--primary);
-    animation: slideIn 0.3s ease;
 }
 
 .toast.error {
     border-left-color: var(--danger);
 }
 
-@keyframes slideIn {
-    from { opacity: 0; transform: translateX(30px); }
-    to { opacity: 1; transform: translateX(0); }
-}
-
-/* ==================== RESPONSIVE BREAKPOINTS ==================== */
 @media (max-width: 992px) {
-    .register-container {
+    .register-container, .role-tiles-wrapper, .about-grid {
         grid-template-columns: 1fr;
     }
     .register-form-wrapper {
         padding: 36px 24px;
-    }
-    .role-tiles-wrapper {
-        grid-template-columns: 1fr;
-    }
-    .about-grid {
-        grid-template-columns: 1fr;
-    }
-    .about-floating-card {
-        right: 12px;
-        bottom: 12px;
     }
 }
 

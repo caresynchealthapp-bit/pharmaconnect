@@ -27,7 +27,7 @@
     <!-- ==================== TOP NAVIGATION BAR ==================== -->
     <header class="navbar" id="main-navbar">
         <div class="nav-container">
-            <a href="#" class="brand-logo" onclick="navigateTo('home')">
+            <a href="#home" class="brand-logo" onclick="navigateTo('home'); return false;">
                 <div class="logo-icon">
                     <i class="fa-solid fa-mortar-pestle"></i>
                 </div>
@@ -35,14 +35,14 @@
             </a>
 
             <nav class="nav-links">
-                <a href="#home" onclick="navigateTo('home')" class="nav-link active">Home</a>
+                <a href="#home" onclick="navigateTo('home'); return false;" class="nav-link active">Home</a>
                 <a href="#about-section" onclick="scrollToAbout(event)" class="nav-link">About Us</a>
                 <a href="#features-section" onclick="scrollToAbout(event)" class="nav-link">Features</a>
                 <a href="#contact-section" onclick="scrollToAbout(event)" class="nav-link">Support</a>
             </nav>
 
             <div class="nav-actions">
-                <button class="btn-register-nav" onclick="navigateTo('register')">
+                <button type="button" class="btn-register-nav" onclick="navigateTo('register')">
                     <i class="fa-solid fa-plus-circle"></i> Register Pharmacy
                 </button>
             </div>
@@ -51,7 +51,6 @@
 
     <!-- ==================== VIEW 1: MAIN FRONT PAGE ==================== -->
     <main id="view-home" class="view-section active">
-        <!-- Hero & Mid-Upper Center Search Section -->
         <section class="hero-section">
             <div class="hero-overlay"></div>
             <div class="hero-content">
@@ -67,12 +66,13 @@
                 <div class="search-wrapper">
                     <i class="fa-solid fa-magnifying-glass search-icon"></i>
                     <input 
-                        type="text" 
+                        type="search" 
                         id="pharmacy-search-input" 
+                        name="pharmacy_search"
                         placeholder="Search for your pharmacy by name, city, or license number..." 
                         autocomplete="off"
                     >
-                    <button id="clear-search-btn" class="clear-search-btn hidden" title="Clear search">
+                    <button type="button" id="clear-search-btn" class="clear-search-btn hidden" title="Clear search">
                         <i class="fa-solid fa-xmark"></i>
                     </button>
                 </div>
@@ -91,16 +91,16 @@
                 </div>
 
                 <!-- Dynamic Grid of Pharmacy Tiles -->
-                <div id="pharmacy-tiles-grid" class="pharmacy-grid">
-                    <!-- Populated dynamically via script.js -->
-                </div>
+                <div id="pharmacy-tiles-grid" class="pharmacy-grid"></div>
 
-                <!-- Empty Search State -->
+                <!-- Empty State -->
                 <div id="no-results-state" class="empty-state hidden">
-                    <i class="fa-solid fa-store-slash"></i>
-                    <h3>No Matching Pharmacies Found</h3>
-                    <p>We couldn't find a pharmacy matching your search query. Try another keyword or register a new branch.</p>
-                    <button class="btn-primary" onclick="navigateTo('register')">Register New Pharmacy</button>
+                    <i class="fa-solid fa-clinic-medical"></i>
+                    <h3 id="empty-state-title">No Pharmacies Registered Yet</h3>
+                    <p id="empty-state-desc">Register your first pharmacy to see it appear here on the live directory.</p>
+                    <button type="button" class="btn-primary" onclick="navigateTo('register')">
+                        <i class="fa-solid fa-plus"></i> Register First Pharmacy
+                    </button>
                 </div>
             </div>
         </section>
@@ -153,7 +153,6 @@
             </div>
         </section>
 
-        <!-- Footer -->
         <footer id="contact-section" class="footer">
             <div class="container footer-content">
                 <div>
@@ -177,34 +176,37 @@
             <div class="register-banner">
                 <div class="register-banner-overlay"></div>
                 <div class="register-banner-content">
-                    <button class="btn-back-light" onclick="navigateTo('home')">
+                    <button type="button" class="btn-back-light" onclick="navigateTo('home')">
                         <i class="fa-solid fa-arrow-left"></i> Back to Front Page
                     </button>
                     <div class="banner-middle">
                         <span class="badge-pill">Partner Onboarding</span>
                         <h2>Register Your Pharmacy on PharmaConnect</h2>
-                        <p>Set up your digital pharmacy workspace. Once registered, your pharmacy tile will immediately appear on the directory and you can configure Cashier and GRN staff credentials from your Admin dashboard.</p>
+                        <p>Set up your digital pharmacy workspace. Once registered, your pharmacy tile will immediately appear on the directory.</p>
                         
                         <ul class="onboarding-steps">
                             <li><i class="fa-solid fa-circle-check"></i> Instant cloud workspace provisioning</li>
                             <li><i class="fa-solid fa-circle-check"></i> Precise GPS & address location pinning</li>
-                            <li><i class="fa-solid fa-circle-check"></i> Master Admin account creation via Supabase Auth</li>
+                            <li><i class="fa-solid fa-circle-check"></i> Master Admin account creation via Supabase</li>
                         </ul>
                     </div>
                     <div class="banner-footer">
-                        <small><i class="fa-solid fa-lock"></i> End-to-end encrypted via Supabase Security</small>
+                        <small><i class="fa-solid fa-lock"></i> Secured with Row Level Security (RLS)</small>
                     </div>
                 </div>
             </div>
 
-            <!-- Right Form Area -->
+            <!-- Right Form Area (WITH FULL AUTOFILL SUPPORT) -->
             <div class="register-form-wrapper">
                 <div class="form-header">
                     <h2>Pharmacy Registration</h2>
                     <p>Complete the details below to deploy your pharmacy management portal.</p>
                 </div>
 
-                <form id="register-pharmacy-form">
+                <!-- Inline Error Box -->
+                <div id="register-error-box" class="form-alert error hidden"></div>
+
+                <form id="register-pharmacy-form" method="post" action="#" autocomplete="on">
                     <!-- 1. Pharmacy Identity Details -->
                     <div class="form-section-title">
                         <i class="fa-solid fa-clinic-medical"></i> Pharmacy Information
@@ -212,22 +214,43 @@
                     <div class="form-grid-2">
                         <div class="form-group">
                             <label for="reg-pharmacy-name">Pharmacy Name *</label>
-                            <input type="text" id="reg-pharmacy-name" required placeholder="e.g., MediCare Central Pharmacy">
+                            <input 
+                                type="text" 
+                                id="reg-pharmacy-name" 
+                                name="organization" 
+                                autocomplete="organization" 
+                                required 
+                                placeholder="e.g., MediCare Central Pharmacy"
+                            >
                         </div>
                         <div class="form-group">
                             <label for="reg-license-no">NMRA / Pharmacy Reg. Number *</label>
-                            <input type="text" id="reg-license-no" required placeholder="e.g., PH-SL-2026-849">
+                            <input 
+                                type="text" 
+                                id="reg-license-no" 
+                                name="license_no" 
+                                autocomplete="off" 
+                                required 
+                                placeholder="e.g., PH-SL-2026-849"
+                            >
                         </div>
                     </div>
 
                     <div class="form-grid-2">
                         <div class="form-group">
                             <label for="reg-phone">Contact Number *</label>
-                            <input type="tel" id="reg-phone" required placeholder="e.g., +94 11 234 5678">
+                            <input 
+                                type="tel" 
+                                id="reg-phone" 
+                                name="tel" 
+                                autocomplete="tel" 
+                                required 
+                                placeholder="e.g., +94 11 234 5678"
+                            >
                         </div>
                         <div class="form-group">
                             <label for="reg-hours">Operating Hours *</label>
-                            <select id="reg-hours" required>
+                            <select id="reg-hours" name="operating_hours" required>
                                 <option value="24/7 Open">Open 24 Hours (24/7)</option>
                                 <option value="8:00 AM - 10:00 PM" selected>8:00 AM – 10:00 PM</option>
                                 <option value="8:00 AM - 8:00 PM">8:00 AM – 8:00 PM</option>
@@ -236,18 +259,32 @@
                         </div>
                     </div>
 
-                    <!-- 2. Pharmacy Location Details (Crucial for long-run features) -->
+                    <!-- 2. Pharmacy Location Details -->
                     <div class="form-section-title">
                         <i class="fa-solid fa-map-location-dot"></i> Location & Coordinates
                     </div>
                     <div class="form-grid-2">
                         <div class="form-group">
                             <label for="reg-city">City / Town *</label>
-                            <input type="text" id="reg-city" required placeholder="e.g., Moratuwa, Colombo">
+                            <input 
+                                type="text" 
+                                id="reg-city" 
+                                name="address-level2" 
+                                autocomplete="address-level2" 
+                                required 
+                                placeholder="e.g., Moratuwa"
+                            >
                         </div>
                         <div class="form-group">
                             <label for="reg-address">Street Address *</label>
-                            <input type="text" id="reg-address" required placeholder="e.g., No. 142, Galle Road">
+                            <input 
+                                type="text" 
+                                id="reg-address" 
+                                name="street-address" 
+                                autocomplete="street-address" 
+                                required 
+                                placeholder="e.g., No. 142, Galle Road"
+                            >
                         </div>
                     </div>
 
@@ -255,49 +292,85 @@
                         <div class="location-coords">
                             <div class="form-group">
                                 <label for="reg-lat">Latitude</label>
-                                <input type="text" id="reg-lat" placeholder="e.g., 6.7951" readonly>
+                                <input type="text" id="reg-lat" name="latitude" placeholder="e.g., 6.7951">
                             </div>
                             <div class="form-group">
                                 <label for="reg-lng">Longitude</label>
-                                <input type="text" id="reg-lng" placeholder="e.g., 79.9009" readonly>
+                                <input type="text" id="reg-lng" name="longitude" placeholder="e.g., 79.9009">
                             </div>
                         </div>
                         <button type="button" id="btn-detect-gps" class="btn-gps" onclick="detectLocation()">
                             <i class="fa-solid fa-location-crosshairs"></i> Detect Current GPS Location
                         </button>
                         <small id="gps-status-text" class="gps-hint">
-                            Pinning exact coordinates helps customers locate your pharmacy and stock in future updates.
+                            You can click Detect GPS or type coordinates manually.
                         </small>
                     </div>
 
                     <div class="form-group" style="margin-top: 14px;">
                         <label for="reg-image-url">Storefront / Cover Image URL (Optional)</label>
-                        <input type="url" id="reg-image-url" placeholder="Leave blank to use default professional pharmacy image">
+                        <input 
+                            type="url" 
+                            id="reg-image-url" 
+                            name="image_url" 
+                            autocomplete="url" 
+                            placeholder="Leave blank to use default professional pharmacy image"
+                        >
                     </div>
 
-                    <!-- 3. Master Admin Credentials (Supabase Auth + Admin Login) -->
+                    <!-- 3. Master Admin Credentials -->
                     <div class="form-section-title">
                         <i class="fa-solid fa-user-lock"></i> Master Admin Credentials
                     </div>
                     <div class="form-grid-2">
                         <div class="form-group">
-                            <label for="reg-admin-email">Admin Email (Supabase Auth) *</label>
-                            <input type="email" id="reg-admin-email" required placeholder="admin@pharmacy.lk">
+                            <label for="reg-admin-email">Admin Email *</label>
+                            <input 
+                                type="email" 
+                                id="reg-admin-email" 
+                                name="email" 
+                                autocomplete="email" 
+                                required 
+                                placeholder="admin@pharmacy.lk"
+                            >
                         </div>
                         <div class="form-group">
                             <label for="reg-admin-username">Admin Username *</label>
-                            <input type="text" id="reg-admin-username" required placeholder="e.g., medicare_admin">
+                            <input 
+                                type="text" 
+                                id="reg-admin-username" 
+                                name="username" 
+                                autocomplete="username" 
+                                required 
+                                placeholder="e.g., medicare_admin"
+                            >
                         </div>
                     </div>
 
                     <div class="form-grid-2">
                         <div class="form-group">
                             <label for="reg-admin-password">Admin Password *</label>
-                            <input type="password" id="reg-admin-password" required minlength="6" placeholder="Min. 6 characters">
+                            <input 
+                                type="password" 
+                                id="reg-admin-password" 
+                                name="password" 
+                                autocomplete="new-password" 
+                                required 
+                                minlength="6" 
+                                placeholder="Min. 6 characters"
+                            >
                         </div>
                         <div class="form-group">
                             <label for="reg-admin-confirm">Confirm Password *</label>
-                            <input type="password" id="reg-admin-confirm" required minlength="6" placeholder="Re-enter password">
+                            <input 
+                                type="password" 
+                                id="reg-admin-confirm" 
+                                name="confirm_password" 
+                                autocomplete="new-password" 
+                                required 
+                                minlength="6" 
+                                placeholder="Re-enter password"
+                            >
                         </div>
                     </div>
 
@@ -317,9 +390,8 @@
         <div class="portal-overlay"></div>
         
         <div class="portal-container">
-            <!-- Top Bar inside Pharmacy Workspace -->
             <div class="portal-topbar">
-                <button class="btn-glass-back" onclick="navigateTo('home')">
+                <button type="button" class="btn-glass-back" onclick="navigateTo('home')">
                     <i class="fa-solid fa-arrow-left"></i> Back to Pharmacy Directory
                 </button>
                 <div class="portal-status-pill">
@@ -327,7 +399,6 @@
                 </div>
             </div>
 
-            <!-- Selected Pharmacy Header Info -->
             <div class="portal-header">
                 <span id="portal-pharmacy-license" class="portal-license-tag">REG: PH-0000</span>
                 <h1 id="portal-pharmacy-name">Pharmacy Name</h1>
@@ -338,7 +409,6 @@
 
             <!-- THREE MAIN SYSTEM TILES IN THE MIDDLE -->
             <div class="role-tiles-wrapper">
-                <!-- Tile 1: Admin -->
                 <div class="role-tile" onclick="openRoleLogin('Admin')">
                     <div class="role-tile-icon admin-accent">
                         <i class="fa-solid fa-user-tie"></i>
@@ -354,7 +424,6 @@
                     </div>
                 </div>
 
-                <!-- Tile 2: Cashier -->
                 <div class="role-tile" onclick="openRoleLogin('Cashier')">
                     <div class="role-tile-icon cashier-accent">
                         <i class="fa-solid fa-cash-register"></i>
@@ -370,7 +439,6 @@
                     </div>
                 </div>
 
-                <!-- Tile 3: GRN System -->
                 <div class="role-tile" onclick="openRoleLogin('GRN System')">
                     <div class="role-tile-icon grn-accent">
                         <i class="fa-solid fa-truck-ramp-box"></i>
@@ -395,7 +463,7 @@
 
         <div class="login-page-container">
             <div class="login-glass-card">
-                <button class="btn-back-inline" onclick="navigateTo('portal')">
+                <button type="button" class="btn-back-inline" onclick="navigateTo('portal')">
                     <i class="fa-solid fa-chevron-left"></i> Back to Role Selection
                 </button>
 
@@ -408,20 +476,28 @@
                     <p id="login-role-subtitle">Enter your authorized credentials to access this workspace.</p>
                 </div>
 
-                <!-- First-Time Info Banner -->
                 <div class="login-info-banner">
                     <i class="fa-solid fa-circle-info"></i>
                     <span id="login-hint-text">
-                        Sign in using your Pharmacy Admin Username & Password. Once inside the Admin dashboard, you can configure dedicated credentials for Cashier and GRN tables.
+                        Sign in using your Pharmacy Admin Username or Email & Password.
                     </span>
                 </div>
 
-                <form id="role-login-form">
+                <div id="login-error-box" class="form-alert error hidden"></div>
+
+                <form id="role-login-form" method="post" action="#" autocomplete="on">
                     <div class="form-group">
-                        <label for="login-username">Username (or Admin Email)</label>
+                        <label for="login-username">Admin Username or Email</label>
                         <div class="input-with-icon">
                             <i class="fa-solid fa-user"></i>
-                            <input type="text" id="login-username" required placeholder="Enter username" autocomplete="username">
+                            <input 
+                                type="text" 
+                                id="login-username" 
+                                name="username" 
+                                autocomplete="username" 
+                                required 
+                                placeholder="Enter admin username or email"
+                            >
                         </div>
                     </div>
 
@@ -429,7 +505,14 @@
                         <label for="login-password">Password</label>
                         <div class="input-with-icon">
                             <i class="fa-solid fa-key"></i>
-                            <input type="password" id="login-password" required placeholder="Enter password" autocomplete="current-password">
+                            <input 
+                                type="password" 
+                                id="login-password" 
+                                name="password" 
+                                autocomplete="current-password" 
+                                required 
+                                placeholder="Enter password"
+                            >
                         </div>
                     </div>
 

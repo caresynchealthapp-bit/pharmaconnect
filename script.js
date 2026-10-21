@@ -2,22 +2,11 @@
    PHARMACONNECT - FRONTEND CONTROLLER & SUPABASE INTEGRATION
    ============================================================================ */
 
-// 1. SUPABASE CONFIGURATION
-// Replace these two placeholders with your actual Supabase Project URL & Anon Key
-const SUPABASE_URL = 'YOUR_SUPABASE_PROJECT_URL';
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const SUPABASE_URL = 'https://juobkaftyrzlxbviudpy.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_qdME8AYk9rz5B4FHs4Eb1g_0vvhN73v';
 
-// Check if real Supabase credentials are configured
-const isSupabaseConfigured = 
-    SUPABASE_URL !== 'https://juobkaftyrzlxbviudpy.supabase.co' && 
-    SUPABASE_ANON_KEY !== 'sb_publishable_qdME8AYk9rz5B4FHs4Eb1g_0vvhN73v';
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-let supabaseClient = null;
-if (isSupabaseConfigured && window.supabase) {
-    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-}
-
-// Default Stock Images for Registered Pharmacies
 const STOCK_PHARMACY_IMAGES = [
     'https://images.unsplash.com/photo-1586015555751-63bb77f4322a?auto=format&fit=crop&w=800&q=80',
     'https://images.unsplash.com/photo-1576602976047-174e57a47881?auto=format&fit=crop&w=800&q=80',
@@ -25,68 +14,18 @@ const STOCK_PHARMACY_IMAGES = [
     'https://images.unsplash.com/photo-1587854692152-cbe660dbde88?auto=format&fit=crop&w=800&q=80'
 ];
 
-// Initial Seed Pharmacies (Used when running locally before Supabase table is connected)
-const INITIAL_PHARMACIES = [
-    {
-        id: 'pharm-101',
-        pharmacy_name: 'MediCare Central Pharmacy',
-        license_no: 'PH-SL-2026-104',
-        city: 'Moratuwa',
-        address: 'No. 245, Galle Road, Moratuwa',
-        latitude: '6.7951',
-        longitude: '79.9009',
-        phone: '+94 11 264 5512',
-        operating_hours: '24/7 Open',
-        admin_email: 'admin@medicare.lk',
-        admin_username: 'medicare_admin',
-        admin_password: 'password123',
-        image_url: STOCK_PHARMACY_IMAGES[0]
-    },
-    {
-        id: 'pharm-102',
-        pharmacy_name: 'LifeLine Health & Pharma',
-        license_no: 'PH-SL-2026-289',
-        city: 'Colombo 03',
-        address: 'No. 88, Duplication Road, Kollupitiya',
-        latitude: '6.9044',
-        longitude: '79.8540',
-        phone: '+94 11 257 8900',
-        operating_hours: '8:00 AM - 10:00 PM',
-        admin_email: 'admin@lifeline.lk',
-        admin_username: 'lifeline_admin',
-        admin_password: 'password123',
-        image_url: STOCK_PHARMACY_IMAGES[1]
-    },
-    {
-        id: 'pharm-103',
-        pharmacy_name: 'CityCare Chemist & Druggist',
-        license_no: 'PH-SL-2026-512',
-        city: 'Kandy',
-        address: 'No. 19, Peradeniya Road, Kandy',
-        latitude: '7.2906',
-        longitude: '80.6337',
-        phone: '+94 81 222 4410',
-        operating_hours: '8:00 AM - 9:00 PM',
-        admin_email: 'admin@citycare.lk',
-        admin_username: 'citycare_admin',
-        admin_password: 'password123',
-        image_url: STOCK_PHARMACY_IMAGES[2]
-    }
-];
-
-// Application State
 let pharmaciesList = [];
 let selectedPharmacy = null;
 let selectedRole = null;
 
 // ==================== INITIALIZATION ====================
 document.addEventListener('DOMContentLoaded', async () => {
-    await loadPharmacies();
     setupEventListeners();
+    await loadPharmacies();
 });
 
 function setupEventListeners() {
-    // Search Bar Input Listener
+    // Search Bar Input
     const searchInput = document.getElementById('pharmacy-search-input');
     const clearBtn = document.getElementById('clear-search-btn');
 
@@ -103,52 +42,33 @@ function setupEventListeners() {
         searchInput.focus();
     });
 
-    // Registration Form Submission
-    const registerForm = document.getElementById('register-pharmacy-form');
-    registerForm.addEventListener('submit', handleRegisterPharmacy);
+    // Registration Form
+    document.getElementById('register-pharmacy-form').addEventListener('submit', handleRegisterPharmacy);
 
-    // Role Login Form Submission
-    const roleLoginForm = document.getElementById('role-login-form');
-    roleLoginForm.addEventListener('submit', handleRoleLogin);
+    // Role Login Form
+    document.getElementById('role-login-form').addEventListener('submit', handleRoleLogin);
 }
 
-// ==================== DATA FETCHING (SUPABASE + LOCAL FALLBACK) ====================
+// ==================== LOAD PHARMACIES FROM SUPABASE ====================
 async function loadPharmacies() {
-    if (supabaseClient) {
-        try {
-            const { data, error } = await supabaseClient
-                .from('pharmacies')
-                .select('*')
-                .order('created_at', { ascending: false });
+    try {
+        const { data, error } = await supabaseClient
+            .from('pharmacies')
+            .select('*')
+            .order('created_at', { ascending: false });
 
-            if (error) throw error;
-            pharmaciesList = data || [];
-        } catch (err) {
-            console.error('Supabase fetch error, using local storage:', err.message);
-            loadFromLocalStorage();
-        }
-    } else {
-        loadFromLocalStorage();
+        if (error) throw error;
+        pharmaciesList = data || [];
+    } catch (err) {
+        console.error('Supabase fetch error:', err.message);
+        showToast(`Database Read Error: ${err.message}`, 'error');
+        pharmaciesList = [];
     }
 
     renderPharmacyTiles('');
 }
 
-function loadFromLocalStorage() {
-    const saved = localStorage.getItem('pharmaconnect_pharmacies');
-    if (saved) {
-        pharmaciesList = JSON.parse(saved);
-    } else {
-        pharmaciesList = [...INITIAL_PHARMACIES];
-        localStorage.setItem('pharmaconnect_pharmacies', JSON.stringify(pharmaciesList));
-    }
-}
-
-function saveToLocalStorage() {
-    localStorage.setItem('pharmaconnect_pharmacies', JSON.stringify(pharmaciesList));
-}
-
-// ==================== RENDER PHARMACY TILES ON FRONT PAGE ====================
+// ==================== RENDER PHARMACY TILES ====================
 function renderPharmacyTiles(searchQuery = '') {
     const grid = document.getElementById('pharmacy-tiles-grid');
     const emptyState = document.getElementById('no-results-state');
@@ -158,10 +78,10 @@ function renderPharmacyTiles(searchQuery = '') {
 
     const filtered = pharmaciesList.filter((item) => {
         return (
-            item.pharmacy_name.toLowerCase().includes(normalizedQuery) ||
-            item.city.toLowerCase().includes(normalizedQuery) ||
-            item.address.toLowerCase().includes(normalizedQuery) ||
-            item.license_no.toLowerCase().includes(normalizedQuery)
+            (item.pharmacy_name || '').toLowerCase().includes(normalizedQuery) ||
+            (item.city || '').toLowerCase().includes(normalizedQuery) ||
+            (item.address || '').toLowerCase().includes(normalizedQuery) ||
+            (item.license_no || '').toLowerCase().includes(normalizedQuery)
         );
     });
 
@@ -206,9 +126,12 @@ function renderPharmacyTiles(searchQuery = '') {
     });
 }
 
-// ==================== REGISTER NEW PHARMACY (WITH SUPABASE AUTH) ====================
+// ==================== REGISTER NEW PHARMACY ====================
 async function handleRegisterPharmacy(e) {
     e.preventDefault();
+
+    const errorBox = document.getElementById('register-error-box');
+    errorBox.classList.add('hidden');
 
     const pharmacyName = document.getElementById('reg-pharmacy-name').value.trim();
     const licenseNo = document.getElementById('reg-license-no').value.trim();
@@ -216,8 +139,8 @@ async function handleRegisterPharmacy(e) {
     const operatingHours = document.getElementById('reg-hours').value;
     const city = document.getElementById('reg-city').value.trim();
     const address = document.getElementById('reg-address').value.trim();
-    const latitude = document.getElementById('reg-lat').value.trim() || '6.9271';
-    const longitude = document.getElementById('reg-lng').value.trim() || '79.8612';
+    const latitude = document.getElementById('reg-lat').value.trim() || '6.7951';
+    const longitude = document.getElementById('reg-lng').value.trim() || '79.9009';
     const customImage = document.getElementById('reg-image-url').value.trim();
     const adminEmail = document.getElementById('reg-admin-email').value.trim();
     const adminUsername = document.getElementById('reg-admin-username').value.trim();
@@ -225,90 +148,85 @@ async function handleRegisterPharmacy(e) {
     const confirmPassword = document.getElementById('reg-admin-confirm').value;
 
     if (adminPassword !== confirmPassword) {
-        showToast('Passwords do not match! Please check again.', 'error');
+        showFormError(errorBox, 'Passwords do not match! Please re-enter.');
         return;
     }
 
     const submitBtn = document.getElementById('btn-submit-register');
     submitBtn.disabled = true;
-    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Registering Pharmacy...';
+    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving to Database...';
 
     const randomStockImage = STOCK_PHARMACY_IMAGES[Math.floor(Math.random() * STOCK_PHARMACY_IMAGES.length)];
 
-    const newPharmacyRecord = {
-        id: 'pharm-' + Date.now(),
-        pharmacy_name: pharmacyName,
-        license_no: licenseNo,
-        phone: phone,
-        operating_hours: operatingHours,
-        city: city,
-        address: address,
-        latitude: latitude,
-        longitude: longitude,
-        image_url: customImage || randomStockImage,
-        admin_email: adminEmail,
-        admin_username: adminUsername,
-        admin_password: adminPassword
-    };
-
     try {
-        if (supabaseClient) {
-            // 1. Built-in Supabase Auth Sign Up for Master Admin
-            const { data: authData, error: authError } = await supabaseClient.auth.signUp({
-                email: adminEmail,
-                password: adminPassword,
-                options: {
-                    data: {
-                        username: adminUsername,
-                        pharmacy_name: pharmacyName,
-                        role: 'admin'
-                    }
+        // Step 1: Register Admin user in Supabase Built-in Auth
+        let authUserId = null;
+        const { data: authData, error: authError } = await supabaseClient.auth.signUp({
+            email: adminEmail,
+            password: adminPassword,
+            options: {
+                data: {
+                    username: adminUsername,
+                    pharmacy_name: pharmacyName,
+                    role: 'admin'
                 }
-            });
+            }
+        });
 
-            if (authError) throw authError;
-
-            // 2. Insert Pharmacy details into Supabase `pharmacies` table
-            const { data: insertedData, error: dbError } = await supabaseClient
-                .from('pharmacies')
-                .insert([{
-                    pharmacy_name: newPharmacyRecord.pharmacy_name,
-                    license_no: newPharmacyRecord.license_no,
-                    phone: newPharmacyRecord.phone,
-                    operating_hours: newPharmacyRecord.operating_hours,
-                    city: newPharmacyRecord.city,
-                    address: newPharmacyRecord.address,
-                    latitude: newPharmacyRecord.latitude,
-                    longitude: newPharmacyRecord.longitude,
-                    image_url: newPharmacyRecord.image_url,
-                    admin_email: newPharmacyRecord.admin_email,
-                    admin_username: newPharmacyRecord.admin_username,
-                    admin_user_id: authData?.user?.id || null
-                }])
-                .select()
-                .single();
-
-            if (dbError) throw dbError;
-            pharmaciesList.unshift(insertedData);
+        if (authError) {
+            if (!authError.message.toLowerCase().includes('already registered')) {
+                throw new Error(`Supabase Auth Error: ${authError.message}`);
+            }
         } else {
-            // Local Storage Fallback Mode
-            pharmaciesList.unshift(newPharmacyRecord);
-            saveToLocalStorage();
+            authUserId = authData?.user?.id || null;
         }
 
-        // Reset form, update front-page tiles, and return to home
+        // Step 2: Insert Pharmacy record into `pharmacies` table
+        const { data: insertedRow, error: dbError } = await supabaseClient
+            .from('pharmacies')
+            .insert([{
+                pharmacy_name: pharmacyName,
+                license_no: licenseNo,
+                phone: phone,
+                operating_hours: operatingHours,
+                city: city,
+                address: address,
+                latitude: latitude,
+                longitude: longitude,
+                image_url: customImage || randomStockImage,
+                admin_email: adminEmail,
+                admin_username: adminUsername,
+                admin_user_id: authUserId
+            }])
+            .select()
+            .single();
+
+        if (dbError) {
+            throw new Error(`Database Table Error: ${dbError.message}`);
+        }
+
+        pharmaciesList.unshift(insertedRow);
+
+        // Success: reset form, update tiles, and return to home page
         document.getElementById('register-pharmacy-form').reset();
         renderPharmacyTiles('');
         navigateTo('home');
-        showToast(`${pharmacyName} registered and added to directory!`);
+        showToast(`${pharmacyName} successfully saved to database!`);
 
     } catch (err) {
-        console.error('Registration error:', err);
-        showToast(err.message || 'Failed to register pharmacy.', 'error');
+        console.error('Registration failed:', err);
+        showFormError(errorBox, err.message);
+        showToast(err.message, 'error');
     } finally {
         submitBtn.disabled = false;
         submitBtn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Complete Registration';
     }
+}
+
+function showFormError(element, message) {
+    element.textContent = message;
+    element.classList.remove('hidden');
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 // ==================== GEOLOCATION DETECTOR ====================
@@ -323,8 +241,8 @@ function detectLocation() {
         return;
     }
 
-    gpsBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Acquiring Satellite Lock...';
-    statusText.textContent = 'Requesting location permission from browser...';
+    gpsBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Acquiring GPS...';
+    statusText.textContent = 'Please click "Allow" on your browser location prompt...';
 
     navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -332,28 +250,25 @@ function detectLocation() {
             const lng = position.coords.longitude.toFixed(5);
             latInput.value = lat;
             lngInput.value = lng;
-            gpsBtn.innerHTML = '<i class="fa-solid fa-check"></i> GPS Coordinates Locked';
-            statusText.textContent = `Coordinates captured successfully (${lat}, ${lng}).`;
-            showToast('Pharmacy GPS coordinates captured!');
+            gpsBtn.innerHTML = '<i class="fa-solid fa-check"></i> Real GPS Locked';
+            statusText.textContent = `Live device coordinates captured: (${lat}, ${lng})`;
+            showToast('Live GPS coordinates captured!');
         },
-        (error) => {
-            // Fallback coordinates if user denies browser prompt during demo
-            latInput.value = '6.79510';
-            lngInput.value = '79.90090';
+        (err) => {
             gpsBtn.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i> Detect Current GPS Location';
-            statusText.textContent = 'Browser GPS blocked; populated default demo coordinates (6.79510, 79.90090).';
-            showToast('Populated default coordinates (GPS permission declined).');
-        }
+            statusText.textContent = `Browser blocked GPS (${err.message}). You can type coordinates or allow location in your browser address bar.`;
+            showToast('Location permission blocked by browser. Enter manually or allow permission.', 'error');
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
     );
 }
 
-// ==================== OPEN SPECIFIC PHARMACY PORTAL (3 TILES) ====================
+// ==================== PHARMACY PORTAL & ROLE LOGIN ====================
 function openPharmacyPortal(pharmacyId) {
     const found = pharmaciesList.find((p) => String(p.id) === String(pharmacyId));
     if (!found) return;
 
     selectedPharmacy = found;
-
     document.getElementById('portal-pharmacy-license').textContent = `REG: ${found.license_no}`;
     document.getElementById('portal-pharmacy-name').textContent = found.pharmacy_name;
     document.querySelector('#portal-pharmacy-location span').textContent = 
@@ -362,39 +277,32 @@ function openPharmacyPortal(pharmacyId) {
     navigateTo('portal');
 }
 
-// ==================== OPEN ROLE LOGIN PAGE (ADMIN / CASHIER / GRN) ====================
 function openRoleLogin(roleName) {
     if (!selectedPharmacy) return;
     selectedRole = roleName;
 
-    const roleTitle = document.getElementById('login-role-title');
-    const pharmacyBadge = document.getElementById('login-pharmacy-badge');
+    document.getElementById('login-error-box').classList.add('hidden');
+    document.getElementById('login-pharmacy-badge').textContent = selectedPharmacy.pharmacy_name;
+    document.getElementById('login-role-title').textContent = `${roleName} Login`;
+
     const roleIconBox = document.getElementById('login-role-icon');
     const hintText = document.getElementById('login-hint-text');
 
-    pharmacyBadge.textContent = selectedPharmacy.pharmacy_name;
-    roleTitle.textContent = `${roleName} Login`;
-
-    // Customize icon and accent color based on which of the 3 tiles was clicked
     if (roleName === 'Admin') {
         roleIconBox.className = 'login-role-icon admin-accent';
         roleIconBox.innerHTML = '<i class="fa-solid fa-user-tie"></i>';
-        hintText.textContent = `Log in with the Master Admin username (${selectedPharmacy.admin_username}) and password created during registration.`;
     } else if (roleName === 'Cashier') {
         roleIconBox.className = 'login-role-icon cashier-accent';
         roleIconBox.innerHTML = '<i class="fa-solid fa-cash-register"></i>';
-        hintText.textContent = `First-time access: Sign in using the Pharmacy Admin credentials (${selectedPharmacy.admin_username}). Separate Cashier logins can be configured inside the Admin portal.`;
     } else {
         roleIconBox.className = 'login-role-icon grn-accent';
         roleIconBox.innerHTML = '<i class="fa-solid fa-truck-ramp-box"></i>';
-        hintText.textContent = `First-time access: Sign in using the Pharmacy Admin credentials (${selectedPharmacy.admin_username}). Dedicated GRN staff credentials can be set inside the Admin portal.`;
     }
 
-    document.getElementById('role-login-form').reset();
+    hintText.textContent = `Sign in with Admin username "${selectedPharmacy.admin_username}" or email "${selectedPharmacy.admin_email}".`;
     navigateTo('login');
 }
 
-// ==================== HANDLE ROLE AUTHENTICATION ====================
 async function handleRoleLogin(e) {
     e.preventDefault();
     if (!selectedPharmacy || !selectedRole) return;
@@ -402,41 +310,35 @@ async function handleRoleLogin(e) {
     const enteredUser = document.getElementById('login-username').value.trim();
     const enteredPass = document.getElementById('login-password').value;
     const loginBtn = document.getElementById('btn-role-login');
+    const errorBox = document.getElementById('login-error-box');
+    errorBox.classList.add('hidden');
 
     loginBtn.disabled = true;
-    loginBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying Credentials...';
+    loginBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Authenticating...';
 
     try {
-        let isAuthenticated = false;
+        // Check if entered username/email belongs to this specific pharmacy
+        const matchesUsername = enteredUser.toLowerCase() === (selectedPharmacy.admin_username || '').toLowerCase();
+        const matchesEmail = enteredUser.toLowerCase() === (selectedPharmacy.admin_email || '').toLowerCase();
 
-        if (supabaseClient && enteredUser.includes('@')) {
-            // Authenticate via Supabase Built-in Auth if email is used
-            const { data, error } = await supabaseClient.auth.signInWithPassword({
-                email: enteredUser,
-                password: enteredPass
-            });
-            if (error) throw error;
-            if (data.user) isAuthenticated = true;
-        } else {
-            // Verify against the Pharmacy's Admin Username / Email & Password
-            const matchesUsername = 
-                enteredUser.toLowerCase() === (selectedPharmacy.admin_username || '').toLowerCase() ||
-                enteredUser.toLowerCase() === (selectedPharmacy.admin_email || '').toLowerCase();
-
-            const matchesPassword = enteredPass === selectedPharmacy.admin_password;
-
-            if (matchesUsername && matchesPassword) {
-                isAuthenticated = true;
-            }
+        if (!matchesUsername && !matchesEmail) {
+            throw new Error(`Username/Email does not match the registered Admin for ${selectedPharmacy.pharmacy_name}.`);
         }
 
-        if (isAuthenticated) {
-            showToast(`Welcome to ${selectedPharmacy.pharmacy_name} — ${selectedRole} Portal!`);
-        } else {
-            showToast('Invalid Admin username or password for this pharmacy.', 'error');
-        }
+        // Authenticate via Supabase Auth using the pharmacy's registered admin_email
+        const { data, error } = await supabaseClient.auth.signInWithPassword({
+            email: selectedPharmacy.admin_email,
+            password: enteredPass
+        });
+
+        if (error) throw new Error(`Supabase Auth: ${error.message}`);
+        if (!data.user) throw new Error('Authentication failed.');
+
+        showToast(`Authenticated! Entering ${selectedPharmacy.pharmacy_name} (${selectedRole})...`);
     } catch (err) {
-        showToast(err.message || 'Authentication failed.', 'error');
+        errorBox.textContent = err.message;
+        errorBox.classList.remove('hidden');
+        showToast(err.message, 'error');
     } finally {
         loginBtn.disabled = false;
         loginBtn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Sign In to Workspace';
@@ -450,6 +352,7 @@ function navigateTo(viewName) {
     if (viewName === 'home') {
         document.getElementById('view-home').classList.add('active');
     } else if (viewName === 'register') {
+        document.getElementById('register-error-box').classList.add('hidden');
         document.getElementById('view-register').classList.add('active');
     } else if (viewName === 'portal') {
         document.getElementById('view-pharmacy-portal').classList.add('active');
@@ -483,7 +386,7 @@ function showToast(message, type = 'success') {
     setTimeout(() => {
         toast.style.opacity = '0';
         setTimeout(() => toast.remove(), 300);
-    }, 4000);
+    }, 4500);
 }
 
 function escapeHtml(str) {
