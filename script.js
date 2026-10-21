@@ -9,8 +9,8 @@ const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
 
 // Check if real Supabase credentials are configured
 const isSupabaseConfigured = 
-    SUPABASE_URL !== 'YOUR_SUPABASE_PROJECT_URL' && 
-    SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY';
+    SUPABASE_URL !== 'https://juobkaftyrzlxbviudpy.supabase.co' && 
+    SUPABASE_ANON_KEY !== 'sb_publishable_qdME8AYk9rz5B4FHs4Eb1g_0vvhN73v';
 
 let supabaseClient = null;
 if (isSupabaseConfigured && window.supabase) {
