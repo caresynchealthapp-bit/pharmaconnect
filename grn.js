@@ -306,28 +306,41 @@ async function handleManualGrnSubmit(e) {
 // ==================== METHOD 2: 2D BARCODE BULK MANIFEST SCANNER ====================
 function start2DCameraScanner() {
     if (html5QrScanner) return;
+    
+    // Show the active scanning animation and instructions
+    document.getElementById('scan-instruction').classList.remove('hidden');
+
     html5QrScanner = new Html5Qrcode('qr-reader');
 
     html5QrScanner.start(
-        { facingMode: 'environment' },
+        { facingMode: 'environment' }, // Uses back camera on mobile, default on PC
         { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText) => {
+            // AUTOMATIC CAPTURE: This triggers instantly when a QR code is detected!
             document.getElementById('raw-2d-payload').value = decodedText;
-            showToast('2D Manifest Barcode Scanned!');
+            showToast('QR Code Captured Automatically!');
             stop2DCameraScanner();
-            parse2DBarcodePayload();
+            parse2DBarcodePayload(); // Automatically decodes the JSON into the table
         },
-        () => {}
+        (errorMessage) => {
+            // Ignored: This runs 10 times a second while searching for a barcode
+        }
     ).catch((err) => {
-        showToast(`Camera access error: ${err}`, 'error');
-        html5QrScanner = null;
+        showToast(`Camera access blocked. Please allow browser camera permissions.`, 'error');
+        stop2DCameraScanner();
     });
 }
 
 function stop2DCameraScanner() {
+    // Hide the scanning instruction text
+    document.getElementById('scan-instruction').classList.add('hidden');
+    
     if (!html5QrScanner) return;
+    
     html5QrScanner.stop().then(() => {
         html5QrScanner.clear();
+        html5QrScanner = null;
+    }).catch((err) => {
         html5QrScanner = null;
     });
 }
