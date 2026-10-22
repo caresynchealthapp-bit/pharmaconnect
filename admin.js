@@ -2,10 +2,66 @@
    PHARMACONNECT - DYNAMIC MULTI-TENANT ADMIN CONTROLLER
    ============================================================================ */
 
+// 1. STRICT SECURITY GATE
+const activeSession = JSON.parse(sessionStorage.getItem('pc_active_session') || 'null');
+const urlParams = new URLSearchParams(window.location.search);
+const pId = urlParams.get('pharmacy_id');
+
+if (!activeSession || !pId || String(activeSession.pharmacy_id) !== String(pId) || activeSession.role !== 'admin') {
+    window.location.href = 'index.html';
+    throw new Error('Security Exception: Unauthorized access blocked. Redirecting to Hub.');
+}
+
+// 2. SUPABASE CONFIGURATION
 const SUPABASE_URL = 'https://juobkaftyrzlxbviudpy.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_qdME8AYk9rz5B4FHs4Eb1g_0vvhN73v';
 
+if (SUPABASE_URL.includes('YOUR_SUPABASE')) {
+    console.error("DEVELOPER WARNING: Supabase keys are missing in admin.js!");
+}
+
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ==================== ENCRYPTION HELPERS ====================
+const SECRET_KEY = "PC_SECURE_2026_";
+
+// Encrypts password for database storage
+function encryptPassword(pwd) {
+    return btoa(SECRET_KEY + pwd).split('').reverse().join('');
+}
+
+// Decrypts password for Admin UI reveal
+function decryptPassword(encPwd) {
+    try {
+        const decoded = atob(encPwd.split('').reverse().join(''));
+        if (decoded.startsWith(SECRET_KEY)) {
+            return decoded.replace(SECRET_KEY, '');
+        }
+        return encPwd; // Fallback for old plain-text test accounts
+    } catch (e) {
+        return encPwd; // Fallback
+    }
+}
+
+// Password toggle UI logic
+window.togglePasswordVisibility = function(btnElement, encryptedPwd) {
+    const codeEl = btnElement.previousElementSibling;
+    const icon = btnElement.querySelector('i');
+    
+    if (codeEl.getAttribute('data-hidden') === 'true') {
+        // Reveal password
+        codeEl.textContent = decryptPassword(encryptedPwd);
+        codeEl.setAttribute('data-hidden', 'false');
+        codeEl.style.letterSpacing = 'normal';
+        icon.classList.replace('fa-eye', 'fa-eye-slash');
+    } else {
+        // Hide password
+        codeEl.textContent = '••••••••';
+        codeEl.setAttribute('data-hidden', 'true');
+        codeEl.style.letterSpacing = '2px';
+        icon.classList.replace('fa-eye-slash', 'fa-eye');
+    }
+};
 
 // Dynamic Per-Pharmacy Theme Palettes
 const PHARMACY_THEMES = [
@@ -24,21 +80,15 @@ let medicineCatalog = [];
 let cashflowChartInstance = null;
 let topMedicinesChartInstance = null;
 
-// ==================== INITIALIZATION & TENANT SECURITY CHECK ====================
+// ==================== INITIALIZATION ====================
 document.addEventListener('DOMContentLoaded', async () => {
-    const params = new URLSearchParams(window.location.search);
-    const pharmacyId = params.get('pharmacy_id');
-    const savedSession = JSON.parse(sessionStorage.getItem('pc_active_session') || 'null');
-
-    if (!pharmacyId || !savedSession || String(savedSession.pharmacy_id) !== String(pharmacyId)) {
-        alert('Unauthorized access! Please sign in through your specific pharmacy tile first.');
-        window.location.href = 'index.html';
-        return;
+    try {
+        await loadTenantPharmacyDetails(pId);
+        setupAdminListeners();
+        await refreshAllAdminData();
+    } catch (err) {
+        showToast('Error loading dashboard data. Check console.', 'error');
     }
-
-    await loadTenantPharmacyDetails(pharmacyId);
-    setupAdminListeners();
-    await refreshAllAdminData();
 });
 
 async function loadTenantPharmacyDetails(pharmacyId) {
@@ -55,16 +105,18 @@ async function loadTenantPharmacyDetails(pharmacyId) {
 
     currentPharmacy = data;
 
-    // Populate Dynamic Pharmacy Branding
     document.title = `${data.pharmacy_name} | Admin Console`;
     document.getElementById('sidebar-pharmacy-name').textContent = data.pharmacy_name;
-    document.getElementById('sidebar-pharmacy-license').textContent = data.license_no;
+    document.getElementById('sidebar-pharmacy-license').textContent = `REG: ${data.license_no}`;
     document.getElementById('sidebar-pharmacy-city').textContent = `${data.address}, ${data.city}`;
     document.getElementById('session-admin-name').textContent = data.admin_username;
-    document.getElementById('sidebar-banner').style.backgroundImage = `url('${data.image_url || ''}')`;
+    
+    const bannerEl = document.getElementById('sidebar-banner');
+    if (bannerEl && data.image_url) {
+        bannerEl.style.backgroundImage = `url('${data.image_url}')`;
+    }
     document.getElementById('link-open-grn').href = `grn.html?pharmacy_id=${encodeURIComponent(data.id)}`;
 
-    // Pick a deterministic dynamic theme based on pharmacy ID (or saved preference)
     const savedThemeIdx = localStorage.getItem(`theme_${data.id}`);
     const hashIdx = data.pharmacy_name.length % PHARMACY_THEMES.length;
     applyPharmacyTheme(savedThemeIdx !== null ? Number(savedThemeIdx) : hashIdx);
@@ -149,7 +201,6 @@ function renderDashboardAnalytics() {
     document.getElementById('counter-sales-summary-badge').textContent =
         `${filteredSales.length} Sales Transactions (${selectedCounter === 'ALL' ? 'All Counters' : selectedCounter})`;
 
-    // Calculate KPIs
     const totalSalesRevenue = filteredSales.reduce((acc, s) => acc + Number(s.total_amount || 0), 0);
     const totalSalesProfit = filteredSales.reduce((acc, s) => acc + Number(s.profit_amount || 0), 0);
     const totalGrnExpenses = grnBatches.reduce((acc, b) => acc + (Number(b.quantity_received || 0) * Number(b.unit_cost || 0)), 0);
@@ -177,7 +228,6 @@ function renderCharts(filteredSales, totalGrnExpenses) {
     const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--brand-primary').trim() || '#0d9488';
     const secondaryColor = getComputedStyle(document.documentElement).getPropertyValue('--brand-secondary').trim() || '#0284c7';
 
-    // 1. Cash Flow, Expenses & Profit Grouped Chart (Last 6 Days / Categories)
     const dayLabels = [];
     const revenueSeries = [];
     const profitSeries = [];
@@ -206,49 +256,26 @@ function renderCharts(filteredSales, totalGrnExpenses) {
         data: {
             labels: dayLabels,
             datasets: [
-                {
-                    label: 'Cash Inflow (Sales LKR)',
-                    data: revenueSeries,
-                    backgroundColor: primaryColor,
-                    borderRadius: 6
-                },
-                {
-                    label: 'GRN Stock Expenses (LKR)',
-                    data: expenseSeries,
-                    backgroundColor: '#ef4444',
-                    borderRadius: 6
-                },
-                {
-                    label: 'Gross Profit (LKR)',
-                    data: profitSeries,
-                    backgroundColor: '#10b981',
-                    borderRadius: 6
-                }
+                { label: 'Cash Inflow (Sales LKR)', data: revenueSeries, backgroundColor: primaryColor, borderRadius: 6 },
+                { label: 'GRN Stock Expenses (LKR)', data: expenseSeries, backgroundColor: '#ef4444', borderRadius: 6 },
+                { label: 'Gross Profit (LKR)', data: profitSeries, backgroundColor: '#10b981', borderRadius: 6 }
             ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'top' }
-            },
-            scales: {
-                y: { beginAtZero: true }
-            }
+            plugins: { legend: { position: 'top' } },
+            scales: { y: { beginAtZero: true } }
         }
     });
 
-    // 2. Most Sold Medicines Horizontal Bar Chart
     const medTotals = {};
     filteredSales.forEach((sale) => {
         const name = sale.medicine_name || 'Unknown';
         medTotals[name] = (medTotals[name] || 0) + Number(sale.quantity_sold || 0);
     });
 
-    const sortedMeds = Object.entries(medTotals)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 6);
-
+    const sortedMeds = Object.entries(medTotals).sort((a, b) => b[1] - a[1]).slice(0, 6);
     const medLabels = sortedMeds.length > 0 ? sortedMeds.map((i) => i[0]) : ['No Sales Yet'];
     const medQuantities = sortedMeds.length > 0 ? sortedMeds.map((i) => i[1]) : [0];
 
@@ -270,12 +297,8 @@ function renderCharts(filteredSales, totalGrnExpenses) {
             indexAxis: 'y',
             responsive: true,
             maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false }
-            },
-            scales: {
-                x: { beginAtZero: true }
-            }
+            plugins: { legend: { display: false } },
+            scales: { x: { beginAtZero: true } }
         }
     });
 }
@@ -286,7 +309,6 @@ function renderCounterBreakdownTable() {
 
     const counterMap = {};
 
-    // Pre-populate registered cashier counters
     staffRecords.filter((s) => s.role === 'cashier').forEach((s) => {
         const key = s.counter_name || 'Unassigned Counter';
         counterMap[key] = {
@@ -299,18 +321,10 @@ function renderCounterBreakdownTable() {
         };
     });
 
-    // Aggregate actual sales
     salesRecords.forEach((s) => {
         const key = s.counter_name || 'Main Counter';
         if (!counterMap[key]) {
-            counterMap[key] = {
-                counter_name: key,
-                cashier_username: s.cashier_username || 'cashier',
-                bills: 0,
-                units: 0,
-                revenue: 0,
-                profit: 0
-            };
+            counterMap[key] = { counter_name: key, cashier_username: s.cashier_username || 'cashier', bills: 0, units: 0, revenue: 0, profit: 0 };
         }
         counterMap[key].bills += 1;
         counterMap[key].units += Number(s.quantity_sold || 0);
@@ -338,7 +352,7 @@ function renderCounterBreakdownTable() {
     });
 }
 
-// ==================== STAFF & COUNTER MANAGEMENT ====================
+// ==================== STAFF & COUNTER MANAGEMENT (WITH ENCRYPTION) ====================
 function toggleCounterField() {
     const role = document.getElementById('staff-role').value;
     const label = document.getElementById('staff-counter-label');
@@ -363,12 +377,15 @@ async function handleCreateStaff(e) {
     const role = document.getElementById('staff-role').value;
     const counterName = document.getElementById('staff-counter').value.trim();
     const username = document.getElementById('staff-username').value.trim();
-    const password = document.getElementById('staff-password').value.trim();
+    const rawPassword = document.getElementById('staff-password').value.trim();
 
     const btn = document.getElementById('btn-save-staff');
     btn.disabled = true;
 
     try {
+        // ENCRYPT PASSWORD BEFORE SAVING
+        const encryptedPassword = encryptPassword(rawPassword);
+
         const { error } = await supabaseClient
             .from('pharmacy_staff')
             .insert([{
@@ -377,7 +394,7 @@ async function handleCreateStaff(e) {
                 role: role,
                 counter_name: counterName,
                 username: username,
-                password: password,
+                password: encryptedPassword,
                 is_active: true
             }]);
 
@@ -413,11 +430,19 @@ function renderStaffTable() {
             </td>
             <td>${escapeHtml(staff.counter_name || '---')}</td>
             <td><code>${escapeHtml(staff.username)}</code></td>
-            <td><code>${escapeHtml(staff.password)}</code></td>
+            <td>
+                <!-- Hidden Password with Reveal Toggle -->
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <code data-hidden="true" style="font-size:1.1rem; letter-spacing:2px; min-width:80px; display:inline-block; border-radius:6px;">••••••••</code>
+                    <button class="btn btn-outline" style="padding:4px 10px; border:none; background:transparent;" onclick="togglePasswordVisibility(this, '${staff.password}')" title="Reveal Password">
+                        <i class="fa-solid fa-eye" style="color:#64748b;"></i>
+                    </button>
+                </div>
+            </td>
             <td><span class="badge badge-success">Active</span></td>
             <td>
-                <button class="btn btn-danger-done" onclick="deleteStaffAccount('${staff.id}')">
-                    <i class="fa-solid fa-trash"></i> Remove
+                <button class="btn btn-outline" style="padding: 6px 10px; color: var(--danger); border-color: var(--danger);" onclick="deleteStaffAccount('${staff.id}')">
+                    <i class="fa-solid fa-trash"></i>
                 </button>
             </td>
         `;
@@ -426,6 +451,7 @@ function renderStaffTable() {
 }
 
 async function deleteStaffAccount(staffId) {
+    if (!confirm('Are you sure you want to delete this staff login?')) return;
     const { error } = await supabaseClient.from('pharmacy_staff').delete().eq('id', staffId);
     if (error) {
         showToast(error.message, 'error');
@@ -445,14 +471,11 @@ async function handleAddCatalogMedicine(e) {
     try {
         const { error } = await supabaseClient
             .from('medicines')
-            .insert([{
-                name: medName,
-                pharmacy_id: currentPharmacy.id
-            }]);
+            .insert([{ name: medName, pharmacy_id: currentPharmacy.id }]);
 
         if (error) throw error;
         nameInput.value = '';
-        showToast(`"${medName}" added to your pharmacy's medicines table!`);
+        showToast(`"${medName}" added to your pharmacy's catalog!`);
         await refreshAllAdminData();
     } catch (err) {
         showToast(err.message, 'error');
@@ -463,28 +486,23 @@ function renderCatalogTable() {
     const tbody = document.getElementById('catalog-stock-tbody');
     tbody.innerHTML = '';
 
-    // Combine medicine names from `medicines` table and `grn_stock`
     const allMedNames = new Set(medicineCatalog.map((m) => m.name));
     grnBatches.forEach((b) => allMedNames.add(b.medicine_name));
 
     const namesArray = Array.from(allMedNames).sort();
     if (namesArray.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#64748b;">No medicines registered in catalog yet. Add medicines above or via the GRN Portal.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#64748b;">No medicines registered in catalog yet.</td></tr>`;
         return;
     }
 
     namesArray.forEach((medName) => {
-        const matchingBatches = grnBatches.filter(
-            (b) => (b.medicine_name || '').toLowerCase() === medName.toLowerCase() && b.current_quantity > 0
-        );
+        const matchingBatches = grnBatches.filter((b) => (b.medicine_name || '').toLowerCase() === medName.toLowerCase() && b.current_quantity > 0);
         const totalQty = matchingBatches.reduce((sum, b) => sum + Number(b.current_quantity || 0), 0);
-        const avgPrice = matchingBatches.length > 0
-            ? matchingBatches.reduce((sum, b) => sum + Number(b.selling_price || 0), 0) / matchingBatches.length
-            : 0;
+        const avgPrice = matchingBatches.length > 0 ? matchingBatches.reduce((sum, b) => sum + Number(b.selling_price || 0), 0) / matchingBatches.length : 0;
 
-        let statusBadge = '<span class="badge badge-danger">Out of Stock</span>';
-        if (totalQty > 50) statusBadge = '<span class="badge badge-success">Healthy Stock</span>';
-        else if (totalQty > 0) statusBadge = '<span class="badge badge-warning">Low Stock</span>';
+        let statusBadge = totalQty > 50 ? '<span class="badge badge-success">Healthy Stock</span>' : 
+                          totalQty > 0 ? '<span class="badge badge-warning">Low Stock</span>' : 
+                          '<span class="badge badge-danger">Out of Stock</span>';
 
         const tr = document.createElement('tr');
         tr.innerHTML = `
@@ -498,7 +516,7 @@ function renderCatalogTable() {
     });
 }
 
-// ==================== SIMULATE COUNTER SALES FOR TESTING CHARTS ====================
+// ==================== SIMULATE COUNTER SALES ====================
 async function seedSampleCounterSales() {
     if (!currentPharmacy) return;
 
@@ -526,9 +544,6 @@ async function seedSampleCounterSales() {
         const saleDate = new Date();
         saleDate.setDate(saleDate.getDate() - daysAgo);
 
-        const total = qty * med.price;
-        const profit = qty * (med.price - med.cost);
-
         rowsToInsert.push({
             pharmacy_id: currentPharmacy.id,
             invoice_no: `INV-${Math.floor(10000 + Math.random() * 90000)}`,
@@ -538,8 +553,8 @@ async function seedSampleCounterSales() {
             quantity_sold: qty,
             unit_cost: med.cost,
             unit_price: med.price,
-            total_amount: total,
-            profit_amount: profit,
+            total_amount: qty * med.price,
+            profit_amount: qty * (med.price - med.cost),
             sold_at: saleDate.toISOString()
         });
     }
@@ -550,7 +565,7 @@ async function seedSampleCounterSales() {
         return;
     }
 
-    showToast('12 Counter Sales simulated! Use the Counter Filter dropdown to test.');
+    showToast('12 Counter Sales simulated!');
     await refreshAllAdminData();
 }
 

@@ -296,13 +296,61 @@ function openRoleLogin(roleName) {
 
     navigateTo('login');
 }
+// ==================== PHARMACY PORTAL & STRICT TENANT ROLE LOGIN ====================
+
+// Helper to encrypt password before checking the database
+function encryptPassword(pwd) {
+    const SECRET_KEY = "PC_SECURE_2026_";
+    return btoa(SECRET_KEY + pwd).split('').reverse().join('');
+}
+
+function openPharmacyPortal(pharmacyId) {
+    const found = pharmaciesList.find((p) => String(p.id) === String(pharmacyId));
+    if (!found) return;
+
+    selectedPharmacy = found;
+    document.getElementById('portal-pharmacy-license').textContent = `REG: ${found.license_no}`;
+    document.getElementById('portal-pharmacy-name').textContent = found.pharmacy_name;
+    document.querySelector('#portal-pharmacy-location span').textContent = 
+        `${found.address}, ${found.city} • ${found.operating_hours}`;
+
+    navigateTo('portal');
+}
+
+function openRoleLogin(roleName) {
+    if (!selectedPharmacy) return;
+    selectedRole = roleName;
+
+    document.getElementById('login-error-box').classList.add('hidden');
+    document.getElementById('login-pharmacy-badge').textContent = selectedPharmacy.pharmacy_name;
+    document.getElementById('login-role-title').textContent = `${roleName} Login`;
+
+    const roleIconBox = document.getElementById('login-role-icon');
+    const hintText = document.getElementById('login-hint-text');
+
+    if (roleName === 'Admin') {
+        roleIconBox.className = 'login-role-icon admin-accent';
+        roleIconBox.innerHTML = '<i class="fa-solid fa-user-tie"></i>';
+        hintText.textContent = `Restricted to ${selectedPharmacy.pharmacy_name} Master Admin (${selectedPharmacy.admin_username}). Other pharmacy credentials will be rejected.`;
+    } else if (roleName === 'Cashier') {
+        roleIconBox.className = 'login-role-icon cashier-accent';
+        roleIconBox.innerHTML = '<i class="fa-solid fa-cash-register"></i>';
+        hintText.textContent = `Enter your Cashier username & password assigned by the ${selectedPharmacy.pharmacy_name} Admin.`;
+    } else {
+        roleIconBox.className = 'login-role-icon grn-accent';
+        roleIconBox.innerHTML = '<i class="fa-solid fa-truck-ramp-box"></i>';
+        hintText.textContent = `Enter your GRN System username & password assigned by the ${selectedPharmacy.pharmacy_name} Admin (or Master Admin login).`;
+    }
+
+    navigateTo('login');
+}
 
 async function handleRoleLogin(e) {
     e.preventDefault();
     if (!selectedPharmacy || !selectedRole) return;
 
     const enteredUser = document.getElementById('login-username').value.trim();
-    const enteredPass = document.getElementById('login-password').value;
+    const enteredPass = document.getElementById('login-password').value.trim();
     const loginBtn = document.getElementById('btn-role-login');
     const errorBox = document.getElementById('login-error-box');
     errorBox.classList.add('hidden');
@@ -315,12 +363,10 @@ async function handleRoleLogin(e) {
             enteredUser.toLowerCase() === (selectedPharmacy.admin_username || '').toLowerCase() ||
             enteredUser.toLowerCase() === (selectedPharmacy.admin_email || '').toLowerCase();
 
-        // 1. ADMIN PORTAL LOGIN (Strictly only this pharmacy's Master Admin)
+        // 1. ADMIN PORTAL LOGIN
         if (selectedRole === 'Admin') {
             if (!isMasterAdminUser) {
-                throw new Error(
-                    `Access Denied: "${enteredUser}" is not the registered Admin for ${selectedPharmacy.pharmacy_name}.`
-                );
+                throw new Error(`Access Denied: "${enteredUser}" is not the registered Admin for ${selectedPharmacy.pharmacy_name}.`);
             }
 
             const { data, error } = await supabaseClient.auth.signInWithPassword({
@@ -347,16 +393,17 @@ async function handleRoleLogin(e) {
             return;
         }
 
-        // 2. GRN SYSTEM OR CASHIER LOGIN (Checks `pharmacy_staff` strictly for `selectedPharmacy.id`)
+        // 2. GRN SYSTEM OR CASHIER LOGIN (WITH ENCRYPTION SUPPORT)
         const targetRoleKey = selectedRole === 'GRN System' ? 'grn' : 'cashier';
 
+        // Check if the password matches either the new Encrypted format OR your old plain-text test accounts
         const { data: staffMatch, error: staffError } = await supabaseClient
             .from('pharmacy_staff')
             .select('*')
             .eq('pharmacy_id', selectedPharmacy.id)
             .eq('role', targetRoleKey)
             .ilike('username', enteredUser)
-            .eq('password', enteredPass)
+            .in('password', [enteredPass, encryptPassword(enteredPass)])
             .eq('is_active', true)
             .maybeSingle();
 
@@ -366,7 +413,6 @@ async function handleRoleLogin(e) {
 
         let authenticatedStaff = staffMatch;
 
-        // Allow this pharmacy's Master Admin as fallback if they log into their own GRN/Cashier
         if (!authenticatedStaff && isMasterAdminUser) {
             const { data: adminAuth, error: adminErr } = await supabaseClient.auth.signInWithPassword({
                 email: selectedPharmacy.admin_email,
@@ -383,7 +429,7 @@ async function handleRoleLogin(e) {
 
         if (!authenticatedStaff) {
             throw new Error(
-                `Access Denied: Invalid ${selectedRole} credentials for ${selectedPharmacy.pharmacy_name}. Make sure the Admin created your account under this pharmacy.`
+                `Access Denied: Invalid ${selectedRole} credentials for ${selectedPharmacy.pharmacy_name}.`
             );
         }
 
@@ -414,7 +460,6 @@ async function handleRoleLogin(e) {
         loginBtn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Sign In to Workspace';
     }
 }
-
 function saveActivePortalSession(sessionObj) {
     sessionStorage.setItem('pc_active_session', JSON.stringify({
         ...sessionObj,
