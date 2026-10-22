@@ -57,7 +57,7 @@ async function loadPharmacyBranding(pharmacyId) {
     currentPharmacy = data;
     document.title = `${data.pharmacy_name} | GRN Inventory System`;
     document.getElementById('sidebar-pharmacy-name').textContent = data.pharmacy_name;
-    document.getElementById('sidebar-pharmacy-license').textContent = data.license_no;
+    document.getElementById('sidebar-pharmacy-license').textContent = `REG: ${data.license_no}`;
     document.getElementById('sidebar-pharmacy-city').textContent = `${data.address}, ${data.city}`;
     document.getElementById('sidebar-banner').style.backgroundImage = `url('${data.image_url || ''}')`;
 
@@ -74,6 +74,7 @@ async function loadPharmacyBranding(pharmacyId) {
 
 function generateNextGrnNumber() {
     const randomNum = Math.floor(1000 + Math.random() * 9000);
+    // Even if optional, pre-filling helps
     document.getElementById('m-grn-no').value = `GRN-2026-${randomNum}`;
 }
 
@@ -105,7 +106,6 @@ function populateMedicineDatalist() {
     });
 }
 
-// Ensures any medicine added in GRN also exists in the user's `public.medicines` table
 async function ensureMedicineInCatalog(medicineName) {
     const cleanName = medicineName.trim();
     const existing = medicineCatalog.find((m) => (m.name || '').toLowerCase() === cleanName.toLowerCase());
@@ -145,7 +145,6 @@ function updateGrnKpisAndAlerts() {
     document.getElementById('grn-kpi-expired').textContent = `${expiredBatches.length} Expired`;
     document.getElementById('grn-kpi-near-expiry').textContent = `${nearExpiryBatches.length} expiring within 30 days`;
 
-    // Show/Hide Urgent Expired Notification Banner & Sidebar Badge
     const banner = document.getElementById('urgent-expired-banner');
     const sidebarBadge = document.getElementById('sidebar-expired-badge');
 
@@ -182,7 +181,7 @@ function renderGrnInventoryTable() {
     });
 
     if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#64748b;">No stock batches found. Add stock via Manual Entry or 2D Barcode Bulk Intake.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:#64748b;">No stock batches found. Add stock via Manual Entry or 2D Barcode Bulk Intake.</td></tr>`;
         return;
     }
 
@@ -196,37 +195,74 @@ function renderGrnInventoryTable() {
             statusHtml = '<span class="badge badge-info">Low Stock</span>';
         }
 
+        // Handle null values gracefully for display
+        const displayGrn = b.grn_number ? escapeHtml(b.grn_number) : '-';
+        const displayBatch = b.batch_number ? escapeHtml(b.batch_number) : 'N/A';
+        const displaySupplier = b.supplier_name ? escapeHtml(b.supplier_name) : '-';
+        const displayRack = b.rack_location ? escapeHtml(b.rack_location) : 'Unassigned';
+
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td><strong>${escapeHtml(b.grn_number)}</strong><br><small style="color:#64748b;">Batch: ${escapeHtml(b.batch_number)}</small></td>
+            <td><strong>${displayGrn}</strong><br><small style="color:#64748b;">Batch: ${displayBatch}</small></td>
             <td><strong>${escapeHtml(b.medicine_name)}</strong></td>
-            <td>${escapeHtml(b.category)}<br><small style="color:#0d9488; font-weight:700;">${escapeHtml(b.rack_location)}</small></td>
-            <td>${escapeHtml(b.supplier_name)}</td>
+            <td>${escapeHtml(b.category)}<br><small style="color:#0d9488; font-weight:700;">${displayRack}</small></td>
+            <td>${displaySupplier}</td>
             <td><strong>${b.current_quantity}</strong> / ${b.quantity_received}</td>
             <td>Cost: LKR ${formatCurrency(b.unit_cost)}<br><strong>MRP: LKR ${formatCurrency(b.selling_price)}</strong></td>
             <td><strong>${escapeHtml(b.expiry_date)}</strong></td>
             <td>${statusHtml}</td>
+            <td>
+                <button class="btn btn-outline" style="padding: 6px 10px; color: var(--danger); border-color: var(--danger);" title="Delete Batch" onclick="deleteGrnBatch('${b.id}')">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            </td>
         `;
         tbody.appendChild(tr);
     });
 }
 
-// ==================== METHOD 1: MANUAL GRN ENTRY ====================
+// Function to handle database deletion of a specific GRN batch row
+async function deleteGrnBatch(batchId) {
+    if (!confirm('Are you sure you want to delete this batch from the database? This action cannot be undone.')) {
+        return;
+    }
+    
+    try {
+        const { error } = await supabaseClient
+            .from('grn_stock')
+            .delete()
+            .eq('id', batchId)
+            .eq('pharmacy_id', currentPharmacy.id);
+            
+        if (error) throw error;
+        
+        showToast('Batch successfully deleted from database.');
+        await refreshGrnData();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+
+// ==================== METHOD 1: MANUAL GRN ENTRY (True Optional Fields) ====================
 async function handleManualGrnSubmit(e) {
     e.preventDefault();
     if (!currentPharmacy) return;
 
+    // Required fields
     const medName = document.getElementById('m-medicine-name').value.trim();
     const category = document.getElementById('m-category').value;
-    const supplier = document.getElementById('m-supplier').value.trim();
-    const grnNo = document.getElementById('m-grn-no').value.trim();
-    const batchNo = document.getElementById('m-batch-no').value.trim();
-    const rack = document.getElementById('m-rack').value.trim();
     const qty = parseInt(document.getElementById('m-qty').value, 10);
     const unitCost = parseFloat(document.getElementById('m-cost').value);
     const sellingPrice = parseFloat(document.getElementById('m-price').value);
-    const mfgDate = document.getElementById('m-mfg-date').value || null;
     const expDate = document.getElementById('m-exp-date').value;
+
+    // Optional fields (Sends NULL if left empty)
+    const supplier = document.getElementById('m-supplier').value.trim() || null;
+    const grnNo = document.getElementById('m-grn-no').value.trim() || null;
+    const batchNo = document.getElementById('m-batch-no').value.trim() || null;
+    const rack = document.getElementById('m-rack').value.trim() || null;
+    const mfgDate = document.getElementById('m-mfg-date').value || null;
 
     const btn = document.getElementById('btn-submit-manual-grn');
     btn.disabled = true;
@@ -254,8 +290,11 @@ async function handleManualGrnSubmit(e) {
         if (error) throw error;
 
         document.getElementById('manual-grn-form').reset();
-        generateNextGrnNumber();
-        showToast(`Batch ${batchNo} (${medName}) added to GRN inventory!`);
+        
+        // Remove the auto-generation function call since GRN is now optional
+        document.getElementById('m-grn-no').value = ''; 
+
+        showToast(`Batch added successfully!`);
         await refreshGrnData();
         switchGrnTab('inventory', document.querySelectorAll('.sidebar-nav .nav-item')[0]);
     } catch (err) {
@@ -264,7 +303,6 @@ async function handleManualGrnSubmit(e) {
         btn.disabled = false;
     }
 }
-
 // ==================== METHOD 2: 2D BARCODE BULK MANIFEST SCANNER ====================
 function start2DCameraScanner() {
     if (html5QrScanner) return;
@@ -295,7 +333,6 @@ function stop2DCameraScanner() {
 }
 
 function generateSample2DManifest() {
-    // 2D Barcode Payload format: Compact JSON array representing a multi-item shipment manifest
     const sampleShipmentManifest = {
         grn: `GRN-2D-${Math.floor(1000 + Math.random() * 9000)}`,
         supplier: 'State Pharmaceuticals Corp (SPC)',
@@ -305,7 +342,6 @@ function generateSample2DManifest() {
             { n: 'Azithromycin 500mg Tab', b: 'BTH-903C', c: 'Tablet', q: 300, uc: 85.0, sp: 135.0, exp: '2028-01-10', r: 'Rack B-01' },
             { n: 'Salbutamol Inhaler 100mcg', b: 'BTH-904D', c: 'Inhaler', q: 120, uc: 480.0, sp: 690.0, exp: '2027-06-30', r: 'Rack C-04' },
             { n: 'Omeprazole 20mg Gastro', b: 'BTH-905E', c: 'Capsule', q: 800, uc: 14.0, sp: 25.0, exp: '2027-09-12', r: 'Rack A-05' },
-            // 1 Intentionally Expired Batch so you can immediately test the Expired Removal Queue!
             { n: 'Cough Syrup Diphenhydramine (EXPIRED SAMPLE)', b: 'EXP-404X', c: 'Syrup', q: 45, uc: 210.0, sp: 340.0, exp: '2025-12-01', r: 'Rack D-09' }
         ]
     };

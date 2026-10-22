@@ -89,7 +89,7 @@
 
         <div class="content-area">
 
-            <!-- URGENT EXPIRED STOCK REMINDER BANNER (AUTO-SHOWN WHEN EXPIRED ITEMS EXIST) -->
+            <!-- URGENT EXPIRED STOCK REMINDER BANNER -->
             <div id="urgent-expired-banner" class="expired-alert-banner hidden">
                 <div class="expired-alert-left">
                     <i class="fa-solid fa-skull-crossbones"></i>
@@ -158,9 +158,10 @@
                                     <th>Category & Rack</th>
                                     <th>Supplier</th>
                                     <th>Available Qty</th>
-                                    <th>Unit Cost / MRP</th>
+                                    <th>Cost / MRP</th>
                                     <th>Expiry Date</th>
-                                    <th>Health Status</th>
+                                    <th>Status</th>
+                                    <th>Action</th> <!-- Added Action Column -->
                                 </tr>
                             </thead>
                             <tbody id="grn-inventory-tbody"></tbody>
@@ -197,23 +198,23 @@
                                 </select>
                             </div>
                             <div class="form-field">
-                                <label for="m-supplier">Wholesale Supplier *</label>
-                                <input type="text" id="m-supplier" class="input-control" required placeholder="e.g., Hemas Pharmaceuticals">
+                                <label for="m-supplier">Wholesale Supplier (Optional)</label>
+                                <input type="text" id="m-supplier" class="input-control" placeholder="Leave blank if unknown">
                             </div>
                         </div>
 
                         <div class="form-grid-3">
                             <div class="form-field">
-                                <label for="m-grn-no">GRN Reference Number *</label>
-                                <input type="text" id="m-grn-no" class="input-control" required>
+                                <label for="m-grn-no">GRN Reference Number (Optional)</label>
+                                <input type="text" id="m-grn-no" class="input-control" placeholder="Auto-generates if empty">
                             </div>
                             <div class="form-field">
-                                <label for="m-batch-no">Manufacturer Batch Number *</label>
-                                <input type="text" id="m-batch-no" class="input-control" required placeholder="e.g., BTH-2026-88A">
+                                <label for="m-batch-no">Manufacturer Batch Number (Optional)</label>
+                                <input type="text" id="m-batch-no" class="input-control" placeholder="Leave blank if unknown">
                             </div>
                             <div class="form-field">
-                                <label for="m-rack">Shelf / Rack Location *</label>
-                                <input type="text" id="m-rack" class="input-control" required placeholder="e.g., Rack A-02">
+                                <label for="m-rack">Shelf / Rack Location (Optional)</label>
+                                <input type="text" id="m-rack" class="input-control" placeholder="Leave blank for Main Shelf">
                             </div>
                         </div>
 
@@ -234,7 +235,7 @@
 
                         <div class="form-grid-3">
                             <div class="form-field">
-                                <label for="m-mfg-date">Manufacture Date</label>
+                                <label for="m-mfg-date">Manufacture Date (Optional)</label>
                                 <input type="date" id="m-mfg-date" class="input-control">
                             </div>
                             <div class="form-field">
