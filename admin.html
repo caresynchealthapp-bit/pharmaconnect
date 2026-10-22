@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Console | PharmaConnect</title>
+
+    <!-- Google Fonts & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Chart.js & Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <link rel="stylesheet" href="portal.css">
+</head>
+<body>
+
+    <div id="toast-container"></div>
+
+    <!-- ==================== DYNAMIC TENANT SIDEBAR ==================== -->
+    <aside class="sidebar">
+        <div id="sidebar-banner" class="sidebar-tenant-banner">
+            <div class="sidebar-tenant-overlay"></div>
+            <div class="sidebar-tenant-content">
+                <span class="tenant-portal-tag"><i class="fa-solid fa-user-tie"></i> Admin Console</span>
+                <h2 id="sidebar-pharmacy-name" class="tenant-name">Loading Pharmacy...</h2>
+                <div class="tenant-meta">
+                    <i class="fa-solid fa-id-card"></i>
+                    <span id="sidebar-pharmacy-license">REG: ---</span>
+                </div>
+                <div class="tenant-meta" style="margin-top: 4px;">
+                    <i class="fa-solid fa-location-dot"></i>
+                    <span id="sidebar-pharmacy-city">---</span>
+                </div>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <button class="nav-item active" onclick="switchAdminTab('dashboard', this)">
+                <span class="nav-item-left"><i class="fa-solid fa-chart-pie"></i> Financial Overview</span>
+            </button>
+            <button class="nav-item" onclick="switchAdminTab('staff', this)">
+                <span class="nav-item-left"><i class="fa-solid fa-users-gear"></i> Staff & Counter Logins</span>
+            </button>
+            <button class="nav-item" onclick="switchAdminTab('catalog', this)">
+                <span class="nav-item-left"><i class="fa-solid fa-capsules"></i> Medicine Catalog & Stock</span>
+            </button>
+            <a href="#" id="link-open-grn" class="nav-item">
+                <span class="nav-item-left"><i class="fa-solid fa-truck-ramp-box"></i> Launch GRN Portal</span>
+                <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 0.8rem;"></i>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="user-session-box">
+                <div class="user-avatar"><i class="fa-solid fa-shield-halved"></i></div>
+                <div class="user-info">
+                    <strong id="session-admin-name">Admin</strong>
+                    <span>Master Owner Access</span>
+                </div>
+            </div>
+            <button class="btn-logout" onclick="logoutAdmin()">
+                <i class="fa-solid fa-right-from-bracket"></i> Exit to Pharmacy Hub
+            </button>
+        </div>
+    </aside>
+
+    <!-- ==================== MAIN WORKSPACE ==================== -->
+    <div class="main-workspace">
+        <header class="topbar">
+            <div class="topbar-title">
+                <h1 id="topbar-heading">Executive Financial & Counter Analytics</h1>
+                <p id="topbar-subheading">Real-time cash flow, GRN stock expenses, net profit, and counter sales breakdown</p>
+            </div>
+
+            <div class="topbar-actions">
+                <div class="theme-pill-selector" title="Customize Pharmacy Brand Theme">
+                    <span>Theme:</span>
+                    <span class="theme-dot" style="background:#0d9488" onclick="applyPharmacyTheme(0)"></span>
+                    <span class="theme-dot" style="background:#4f46e5" onclick="applyPharmacyTheme(1)"></span>
+                    <span class="theme-dot" style="background:#e11d48" onclick="applyPharmacyTheme(2)"></span>
+                    <span class="theme-dot" style="background:#d97706" onclick="applyPharmacyTheme(3)"></span>
+                </div>
+                <button class="btn btn-outline" onclick="seedSampleCounterSales()">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Simulate Counter Sales
+                </button>
+            </div>
+        </header>
+
+        <div class="content-area">
+
+            <!-- ==================== TAB 1: EXECUTIVE DASHBOARD ==================== -->
+            <section id="tab-dashboard" class="tab-panel active">
+                <!-- Counter & Date Filter Bar -->
+                <div class="filter-toolbar">
+                    <div class="filter-group">
+                        <label for="counter-filter-select"><i class="fa-solid fa-cash-register"></i> Filter by Cashier Counter:</label>
+                        <select id="counter-filter-select" class="select-control" onchange="renderDashboardAnalytics()">
+                            <option value="ALL">All Counters (Combined Pharmacy Sales)</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <span id="counter-sales-summary-badge" class="badge badge-info">0 Transactions Filtered</span>
+                    </div>
+                </div>
+
+                <!-- 4 KPI Cards -->
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="kpi-info">
+                            <span>Cash Inflow (Sales)</span>
+                            <h3 id="kpi-cash-inflow">LKR 0.00</h3>
+                            <small id="kpi-sales-count">Across 0 counter bills</small>
+                        </div>
+                        <div class="kpi-icon"><i class="fa-solid fa-sack-dollar"></i></div>
+                    </div>
+
+                    <div class="kpi-card">
+                        <div class="kpi-info">
+                            <span>GRN Stock Expenses</span>
+                            <h3 id="kpi-grn-expenses">LKR 0.00</h3>
+                            <small id="kpi-grn-batches">0 total batches received</small>
+                        </div>
+                        <div class="kpi-icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
+                    </div>
+
+                    <div class="kpi-card">
+                        <div class="kpi-info">
+                            <span>Gross Sales Profit</span>
+                            <h3 id="kpi-net-profit">LKR 0.00</h3>
+                            <small id="kpi-profit-margin">Margin: 0%</small>
+                        </div>
+                        <div class="kpi-icon"><i class="fa-solid fa-chart-line"></i></div>
+                    </div>
+
+                    <div class="kpi-card">
+                        <div class="kpi-info">
+                            <span>Active Stock Valuation</span>
+                            <h3 id="kpi-stock-value">LKR 0.00</h3>
+                            <small id="kpi-expired-warning">0 expired batches</small>
+                        </div>
+                        <div class="kpi-icon"><i class="fa-solid fa-boxes-stacked"></i></div>
+                    </div>
+                </div>
+
+                <!-- Interactive Charts Grid -->
+                <div class="charts-grid">
+                    <div class="panel-card">
+                        <div class="panel-header">
+                            <h2><i class="fa-solid fa-chart-column"></i> Cash Flow, GRN Expenses & Profit Overview</h2>
+                        </div>
+                        <div class="chart-box">
+                            <canvas id="cashflowChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="panel-card">
+                        <div class="panel-header">
+                            <h2><i class="fa-solid fa-trophy"></i> Most Sold Medicines</h2>
+                        </div>
+                        <div class="chart-box">
+                            <canvas id="topMedicinesChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Counter Performance Breakdown Table -->
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h2><i class="fa-solid fa-desktop"></i> Counter-by-Counter Sales Performance</h2>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Counter Name</th>
+                                    <th>Cashier Username</th>
+                                    <th>Total Bills / Sales Count</th>
+                                    <th>Units Dispensed</th>
+                                    <th>Total Revenue (Cash Inflow)</th>
+                                    <th>Net Profit Generated</th>
+                                </tr>
+                            </thead>
+                            <tbody id="counter-performance-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== TAB 2: STAFF & COUNTER MANAGEMENT ==================== -->
+            <section id="tab-staff" class="tab-panel">
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h2><i class="fa-solid fa-user-plus"></i> Create Cashier Counter or GRN Staff Login</h2>
+                    </div>
+                    <form id="create-staff-form" autocomplete="off">
+                        <div class="form-grid-3">
+                            <div class="form-field">
+                                <label for="staff-fullname">Staff Full Name *</label>
+                                <input type="text" id="staff-fullname" class="input-control" required placeholder="e.g., Kasun Perera">
+                            </div>
+                            <div class="form-field">
+                                <label for="staff-role">Portal Role *</label>
+                                <select id="staff-role" class="select-control" required onchange="toggleCounterField()">
+                                    <option value="cashier">Cashier (POS Billing Portal)</option>
+                                    <option value="grn">GRN Officer (Stock Intake Portal)</option>
+                                </select>
+                            </div>
+                            <div class="form-field">
+                                <label for="staff-counter" id="staff-counter-label">Assigned Counter Number *</label>
+                                <input type="text" id="staff-counter" class="input-control" required placeholder="e.g., Counter 01">
+                            </div>
+                        </div>
+
+                        <div class="form-grid-3">
+                            <div class="form-field">
+                                <label for="staff-username">Login Username *</label>
+                                <input type="text" id="staff-username" class="input-control" required placeholder="e.g., cashier_c1">
+                            </div>
+                            <div class="form-field">
+                                <label for="staff-password">Login Password *</label>
+                                <input type="text" id="staff-password" class="input-control" required minlength="4" placeholder="Enter staff password">
+                            </div>
+                            <div class="form-field" style="justify-content: flex-end;">
+                                <button type="submit" id="btn-save-staff" class="btn btn-brand">
+                                    <i class="fa-solid fa-key"></i> Register Staff Credentials
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h2><i class="fa-solid fa-id-badge"></i> Registered Cashiers & GRN Officers for This Pharmacy</h2>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Staff Name</th>
+                                    <th>Role</th>
+                                    <th>Counter / Desk</th>
+                                    <th>Username</th>
+                                    <th>Password</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="staff-list-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== TAB 3: MEDICINE CATALOG & STOCK ==================== -->
+            <section id="tab-catalog" class="tab-panel">
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h2><i class="fa-solid fa-prescription-bottle-medical"></i> Register New Medicine Name in Master Catalog (`medicines` Table)</h2>
+                    </div>
+                    <form id="add-medicine-catalog-form" style="display:flex; gap:12px; flex-wrap:wrap;">
+                        <input type="text" id="catalog-medicine-name" class="input-control" style="flex:1; min-width:260px;" required placeholder="e.g., Amoxicillin 500mg Capsules (BP)">
+                        <button type="submit" class="btn btn-brand">
+                            <i class="fa-solid fa-plus"></i> Add to Medicine Catalog
+                        </button>
+                    </form>
+                </div>
+
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h2><i class="fa-solid fa-warehouse"></i> Master Medicine Catalog & Live Batch Stock Summary</h2>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Medicine Name (`medicines` table)</th>
+                                    <th>Active Batches in GRN</th>
+                                    <th>Total Available Units</th>
+                                    <th>Average Selling Price</th>
+                                    <th>Stock Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="catalog-stock-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>

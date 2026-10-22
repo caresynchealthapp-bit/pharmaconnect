@@ -1,7 +1,7 @@
-/* ============================================================================
-   PHARMACONNECT - FRONTEND CONTROLLER & SUPABASE INTEGRATION
-   ============================================================================ */
 
+/* ============================================================================
+   PHARMACONNECT - MAIN LANDING CONTROLLER & STRICT MULTI-TENANT AUTH
+   ============================================================================ */
 const SUPABASE_URL = 'https://juobkaftyrzlxbviudpy.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_qdME8AYk9rz5B4FHs4Eb1g_0vvhN73v';
 
@@ -25,7 +25,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 function setupEventListeners() {
-    // Search Bar Input
     const searchInput = document.getElementById('pharmacy-search-input');
     const clearBtn = document.getElementById('clear-search-btn');
 
@@ -42,10 +41,7 @@ function setupEventListeners() {
         searchInput.focus();
     });
 
-    // Registration Form
     document.getElementById('register-pharmacy-form').addEventListener('submit', handleRegisterPharmacy);
-
-    // Role Login Form
     document.getElementById('role-login-form').addEventListener('submit', handleRoleLogin);
 }
 
@@ -159,7 +155,6 @@ async function handleRegisterPharmacy(e) {
     const randomStockImage = STOCK_PHARMACY_IMAGES[Math.floor(Math.random() * STOCK_PHARMACY_IMAGES.length)];
 
     try {
-        // Step 1: Register Admin user in Supabase Built-in Auth
         let authUserId = null;
         const { data: authData, error: authError } = await supabaseClient.auth.signUp({
             email: adminEmail,
@@ -181,7 +176,6 @@ async function handleRegisterPharmacy(e) {
             authUserId = authData?.user?.id || null;
         }
 
-        // Step 2: Insert Pharmacy record into `pharmacies` table
         const { data: insertedRow, error: dbError } = await supabaseClient
             .from('pharmacies')
             .insert([{
@@ -206,8 +200,6 @@ async function handleRegisterPharmacy(e) {
         }
 
         pharmaciesList.unshift(insertedRow);
-
-        // Success: reset form, update tiles, and return to home page
         document.getElementById('register-pharmacy-form').reset();
         renderPharmacyTiles('');
         navigateTo('home');
@@ -263,7 +255,7 @@ function detectLocation() {
     );
 }
 
-// ==================== PHARMACY PORTAL & ROLE LOGIN ====================
+// ==================== PHARMACY PORTAL & STRICT TENANT ROLE LOGIN ====================
 function openPharmacyPortal(pharmacyId) {
     const found = pharmaciesList.find((p) => String(p.id) === String(pharmacyId));
     if (!found) return;
@@ -291,15 +283,17 @@ function openRoleLogin(roleName) {
     if (roleName === 'Admin') {
         roleIconBox.className = 'login-role-icon admin-accent';
         roleIconBox.innerHTML = '<i class="fa-solid fa-user-tie"></i>';
+        hintText.textContent = `Restricted to ${selectedPharmacy.pharmacy_name} Master Admin (${selectedPharmacy.admin_username}). Other pharmacy credentials will be rejected.`;
     } else if (roleName === 'Cashier') {
         roleIconBox.className = 'login-role-icon cashier-accent';
         roleIconBox.innerHTML = '<i class="fa-solid fa-cash-register"></i>';
+        hintText.textContent = `Enter your Cashier username & password assigned by the ${selectedPharmacy.pharmacy_name} Admin.`;
     } else {
         roleIconBox.className = 'login-role-icon grn-accent';
         roleIconBox.innerHTML = '<i class="fa-solid fa-truck-ramp-box"></i>';
+        hintText.textContent = `Enter your GRN System username & password assigned by the ${selectedPharmacy.pharmacy_name} Admin (or Master Admin login).`;
     }
 
-    hintText.textContent = `Sign in with Admin username "${selectedPharmacy.admin_username}" or email "${selectedPharmacy.admin_email}".`;
     navigateTo('login');
 }
 
@@ -314,27 +308,103 @@ async function handleRoleLogin(e) {
     errorBox.classList.add('hidden');
 
     loginBtn.disabled = true;
-    loginBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Authenticating...';
+    loginBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying Tenant Credentials...';
 
     try {
-        // Check if entered username/email belongs to this specific pharmacy
-        const matchesUsername = enteredUser.toLowerCase() === (selectedPharmacy.admin_username || '').toLowerCase();
-        const matchesEmail = enteredUser.toLowerCase() === (selectedPharmacy.admin_email || '').toLowerCase();
+        const isMasterAdminUser =
+            enteredUser.toLowerCase() === (selectedPharmacy.admin_username || '').toLowerCase() ||
+            enteredUser.toLowerCase() === (selectedPharmacy.admin_email || '').toLowerCase();
 
-        if (!matchesUsername && !matchesEmail) {
-            throw new Error(`Username/Email does not match the registered Admin for ${selectedPharmacy.pharmacy_name}.`);
+        // 1. ADMIN PORTAL LOGIN (Strictly only this pharmacy's Master Admin)
+        if (selectedRole === 'Admin') {
+            if (!isMasterAdminUser) {
+                throw new Error(
+                    `Access Denied: "${enteredUser}" is not the registered Admin for ${selectedPharmacy.pharmacy_name}.`
+                );
+            }
+
+            const { data, error } = await supabaseClient.auth.signInWithPassword({
+                email: selectedPharmacy.admin_email,
+                password: enteredPass
+            });
+
+            if (error || !data.user) {
+                throw new Error(`Invalid Admin password for ${selectedPharmacy.pharmacy_name}.`);
+            }
+
+            saveActivePortalSession({
+                pharmacy_id: selectedPharmacy.id,
+                pharmacy_name: selectedPharmacy.pharmacy_name,
+                role: 'admin',
+                staff_name: selectedPharmacy.admin_username,
+                counter_name: 'Master Admin Console'
+            });
+
+            showToast(`Authenticated! Opening ${selectedPharmacy.pharmacy_name} Admin Portal...`);
+            setTimeout(() => {
+                window.location.href = `admin.html?pharmacy_id=${encodeURIComponent(selectedPharmacy.id)}`;
+            }, 500);
+            return;
         }
 
-        // Authenticate via Supabase Auth using the pharmacy's registered admin_email
-        const { data, error } = await supabaseClient.auth.signInWithPassword({
-            email: selectedPharmacy.admin_email,
-            password: enteredPass
+        // 2. GRN SYSTEM OR CASHIER LOGIN (Checks `pharmacy_staff` strictly for `selectedPharmacy.id`)
+        const targetRoleKey = selectedRole === 'GRN System' ? 'grn' : 'cashier';
+
+        const { data: staffMatch, error: staffError } = await supabaseClient
+            .from('pharmacy_staff')
+            .select('*')
+            .eq('pharmacy_id', selectedPharmacy.id)
+            .eq('role', targetRoleKey)
+            .ilike('username', enteredUser)
+            .eq('password', enteredPass)
+            .eq('is_active', true)
+            .maybeSingle();
+
+        if (staffError) {
+            throw new Error(`Staff verification error: ${staffError.message}`);
+        }
+
+        let authenticatedStaff = staffMatch;
+
+        // Allow this pharmacy's Master Admin as fallback if they log into their own GRN/Cashier
+        if (!authenticatedStaff && isMasterAdminUser) {
+            const { data: adminAuth, error: adminErr } = await supabaseClient.auth.signInWithPassword({
+                email: selectedPharmacy.admin_email,
+                password: enteredPass
+            });
+            if (!adminErr && adminAuth?.user) {
+                authenticatedStaff = {
+                    full_name: `${selectedPharmacy.admin_username} (Admin)`,
+                    username: selectedPharmacy.admin_username,
+                    counter_name: targetRoleKey === 'grn' ? 'Master GRN Desk' : 'Master POS Counter'
+                };
+            }
+        }
+
+        if (!authenticatedStaff) {
+            throw new Error(
+                `Access Denied: Invalid ${selectedRole} credentials for ${selectedPharmacy.pharmacy_name}. Make sure the Admin created your account under this pharmacy.`
+            );
+        }
+
+        saveActivePortalSession({
+            pharmacy_id: selectedPharmacy.id,
+            pharmacy_name: selectedPharmacy.pharmacy_name,
+            role: targetRoleKey,
+            staff_name: authenticatedStaff.full_name,
+            username: authenticatedStaff.username,
+            counter_name: authenticatedStaff.counter_name || 'Main Desk'
         });
 
-        if (error) throw new Error(`Supabase Auth: ${error.message}`);
-        if (!data.user) throw new Error('Authentication failed.');
+        if (targetRoleKey === 'grn') {
+            showToast(`Welcome ${authenticatedStaff.full_name}! Launching GRN System...`);
+            setTimeout(() => {
+                window.location.href = `grn.html?pharmacy_id=${encodeURIComponent(selectedPharmacy.id)}`;
+            }, 500);
+        } else {
+            showToast(`Authenticated as ${authenticatedStaff.full_name} (${authenticatedStaff.counter_name}). Cashier portal coming next!`);
+        }
 
-        showToast(`Authenticated! Entering ${selectedPharmacy.pharmacy_name} (${selectedRole})...`);
     } catch (err) {
         errorBox.textContent = err.message;
         errorBox.classList.remove('hidden');
@@ -343,6 +413,13 @@ async function handleRoleLogin(e) {
         loginBtn.disabled = false;
         loginBtn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Sign In to Workspace';
     }
+}
+
+function saveActivePortalSession(sessionObj) {
+    sessionStorage.setItem('pc_active_session', JSON.stringify({
+        ...sessionObj,
+        authenticated_at: new Date().toISOString()
+    }));
 }
 
 // ==================== SPA VIEW NAVIGATION ====================

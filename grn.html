@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GRN Inventory System | PharmaConnect</title>
+
+    <!-- Fonts & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- 2D Barcode / QR Camera Scanner & QR Code Generator CDNs -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <link rel="stylesheet" href="portal.css">
+</head>
+<body>
+
+    <div id="toast-container"></div>
+
+    <!-- ==================== DYNAMIC SIDEBAR ==================== -->
+    <aside class="sidebar">
+        <div id="sidebar-banner" class="sidebar-tenant-banner">
+            <div class="sidebar-tenant-overlay"></div>
+            <div class="sidebar-tenant-content">
+                <span class="tenant-portal-tag"><i class="fa-solid fa-truck-ramp-box"></i> GRN System</span>
+                <h2 id="sidebar-pharmacy-name" class="tenant-name">Loading Pharmacy...</h2>
+                <div class="tenant-meta">
+                    <i class="fa-solid fa-id-card"></i>
+                    <span id="sidebar-pharmacy-license">REG: ---</span>
+                </div>
+                <div class="tenant-meta" style="margin-top: 4px;">
+                    <i class="fa-solid fa-location-dot"></i>
+                    <span id="sidebar-pharmacy-city">---</span>
+                </div>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <button class="nav-item active" onclick="switchGrnTab('inventory', this)">
+                <span class="nav-item-left"><i class="fa-solid fa-boxes-stacked"></i> Live Batch Inventory</span>
+            </button>
+            <button class="nav-item" onclick="switchGrnTab('manual', this)">
+                <span class="nav-item-left"><i class="fa-solid fa-keyboard"></i> Manual Stock Entry</span>
+            </button>
+            <button class="nav-item" onclick="switchGrnTab('barcode2d', this)">
+                <span class="nav-item-left"><i class="fa-solid fa-qrcode"></i> 2D Barcode Bulk Intake</span>
+            </button>
+            <button class="nav-item" id="nav-btn-expired" onclick="switchGrnTab('expired', this)">
+                <span class="nav-item-left"><i class="fa-solid fa-triangle-exclamation"></i> Expired Stock Removal</span>
+                <span id="sidebar-expired-badge" class="nav-badge-danger hidden">0</span>
+            </button>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="user-session-box">
+                <div class="user-avatar"><i class="fa-solid fa-clipboard-check"></i></div>
+                <div class="user-info">
+                    <strong id="session-staff-name">GRN Officer</strong>
+                    <span id="session-desk-name">Stock Intake Desk</span>
+                </div>
+            </div>
+            <button class="btn-logout" onclick="logoutGrn()">
+                <i class="fa-solid fa-right-from-bracket"></i> Sign Out of GRN
+            </button>
+        </div>
+    </aside>
+
+    <!-- ==================== MAIN WORKSPACE ==================== -->
+    <div class="main-workspace">
+        <header class="topbar">
+            <div class="topbar-title">
+                <h1>Goods Received Note (GRN) & Batch Control</h1>
+                <p>Manage incoming pharmaceutical shipments, 2D bulk manifests, and expired medicine disposal</p>
+            </div>
+            <div class="topbar-actions">
+                <button class="btn btn-outline" onclick="switchGrnTab('barcode2d', document.querySelectorAll('.sidebar-nav .nav-item')[2])">
+                    <i class="fa-solid fa-qrcode"></i> Scan 2D Bulk Barcode
+                </button>
+                <button class="btn btn-brand" onclick="switchGrnTab('manual', document.querySelectorAll('.sidebar-nav .nav-item')[1])">
+                    <i class="fa-solid fa-plus"></i> + New Manual GRN
+                </button>
+            </div>
+        </header>
+
+        <div class="content-area">
+
+            <!-- URGENT EXPIRED STOCK REMINDER BANNER (AUTO-SHOWN WHEN EXPIRED ITEMS EXIST) -->
+            <div id="urgent-expired-banner" class="expired-alert-banner hidden">
+                <div class="expired-alert-left">
+                    <i class="fa-solid fa-skull-crossbones"></i>
+                    <div>
+                        <h3 id="expired-banner-title">Action Required: Expired Medicines Detected in Stock!</h3>
+                        <p id="expired-banner-desc">Please remove expired batches from physical shelves and click "Done" to clear them from active inventory.</p>
+                    </div>
+                </div>
+                <button class="btn" style="background:#fff; color:#991b1b;" onclick="switchGrnTab('expired', document.getElementById('nav-btn-expired'))">
+                    Review & Remove Expired Stock <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+
+            <!-- KPI SUMMARY -->
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-info">
+                        <span>Active Batches in Stock</span>
+                        <h3 id="grn-kpi-batches">0</h3>
+                        <small id="grn-kpi-catalog-count">0 catalog medicines</small>
+                    </div>
+                    <div class="kpi-icon"><i class="fa-solid fa-boxes-packing"></i></div>
+                </div>
+
+                <div class="kpi-card">
+                    <div class="kpi-info">
+                        <span>Total Available Units</span>
+                        <h3 id="grn-kpi-units">0</h3>
+                        <small>Ready for POS dispensing</small>
+                    </div>
+                    <div class="kpi-icon"><i class="fa-solid fa-pills"></i></div>
+                </div>
+
+                <div class="kpi-card">
+                    <div class="kpi-info">
+                        <span>Wholesale GRN Spend</span>
+                        <h3 id="grn-kpi-cost">LKR 0.00</h3>
+                        <small>Total stock purchase value</small>
+                    </div>
+                    <div class="kpi-icon"><i class="fa-solid fa-coins"></i></div>
+                </div>
+
+                <div class="kpi-card">
+                    <div class="kpi-info">
+                        <span>Expired / Near-Expiry</span>
+                        <h3 id="grn-kpi-expired">0 Batches</h3>
+                        <small id="grn-kpi-near-expiry">0 expiring within 30 days</small>
+                    </div>
+                    <div class="kpi-icon" style="background:#fee2e2; color:#dc2626;"><i class="fa-solid fa-calendar-xmark"></i></div>
+                </div>
+            </div>
+
+            <!-- ==================== TAB 1: LIVE BATCH INVENTORY ==================== -->
+            <section id="tab-inventory" class="tab-panel active">
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h2><i class="fa-solid fa-warehouse"></i> Complete Pharmacy Stock & Batch Registry</h2>
+                        <input type="search" id="grn-search-input" class="input-control" style="min-width:280px;" placeholder="Search medicine, batch #, GRN #, or rack..." oninput="renderGrnInventoryTable()">
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>GRN / Batch #</th>
+                                    <th>Medicine Name</th>
+                                    <th>Category & Rack</th>
+                                    <th>Supplier</th>
+                                    <th>Available Qty</th>
+                                    <th>Unit Cost / MRP</th>
+                                    <th>Expiry Date</th>
+                                    <th>Health Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="grn-inventory-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== TAB 2: MANUAL STOCK ENTRY ==================== -->
+            <section id="tab-manual" class="tab-panel">
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h2><i class="fa-solid fa-file-medical"></i> Manual GRN Batch Entry (Synced with `medicines` Table)</h2>
+                    </div>
+
+                    <form id="manual-grn-form" autocomplete="off">
+                        <!-- Datalist populated dynamically from `public.medicines` -->
+                        <datalist id="pharmacy-medicines-datalist"></datalist>
+
+                        <div class="form-grid-3">
+                            <div class="form-field">
+                                <label for="m-medicine-name">Medicine Name (Select or Type New) *</label>
+                                <input type="text" id="m-medicine-name" list="pharmacy-medicines-datalist" class="input-control" required placeholder="Start typing to search catalog...">
+                            </div>
+                            <div class="form-field">
+                                <label for="m-category">Dosage Category *</label>
+                                <select id="m-category" class="select-control" required>
+                                    <option value="Tablet">Tablet / Pill</option>
+                                    <option value="Capsule">Capsule</option>
+                                    <option value="Syrup">Syrup / Suspension</option>
+                                    <option value="Injection">Injection / Vial</option>
+                                    <option value="Ointment">Cream / Ointment</option>
+                                    <option value="Inhaler">Inhaler / Drops</option>
+                                </select>
+                            </div>
+                            <div class="form-field">
+                                <label for="m-supplier">Wholesale Supplier *</label>
+                                <input type="text" id="m-supplier" class="input-control" required placeholder="e.g., Hemas Pharmaceuticals">
+                            </div>
+                        </div>
+
+                        <div class="form-grid-3">
+                            <div class="form-field">
+                                <label for="m-grn-no">GRN Reference Number *</label>
+                                <input type="text" id="m-grn-no" class="input-control" required>
+                            </div>
+                            <div class="form-field">
+                                <label for="m-batch-no">Manufacturer Batch Number *</label>
+                                <input type="text" id="m-batch-no" class="input-control" required placeholder="e.g., BTH-2026-88A">
+                            </div>
+                            <div class="form-field">
+                                <label for="m-rack">Shelf / Rack Location *</label>
+                                <input type="text" id="m-rack" class="input-control" required placeholder="e.g., Rack A-02">
+                            </div>
+                        </div>
+
+                        <div class="form-grid-3">
+                            <div class="form-field">
+                                <label for="m-qty">Quantity Received (Units) *</label>
+                                <input type="number" id="m-qty" class="input-control" min="1" required placeholder="e.g., 500">
+                            </div>
+                            <div class="form-field">
+                                <label for="m-cost">Wholesale Unit Cost (LKR) *</label>
+                                <input type="number" id="m-cost" class="input-control" step="0.01" min="0" required placeholder="e.g., 12.50">
+                            </div>
+                            <div class="form-field">
+                                <label for="m-price">Retail Selling Price / MRP (LKR) *</label>
+                                <input type="number" id="m-price" class="input-control" step="0.01" min="0" required placeholder="e.g., 18.00">
+                            </div>
+                        </div>
+
+                        <div class="form-grid-3">
+                            <div class="form-field">
+                                <label for="m-mfg-date">Manufacture Date</label>
+                                <input type="date" id="m-mfg-date" class="input-control">
+                            </div>
+                            <div class="form-field">
+                                <label for="m-exp-date">Expiry Date *</label>
+                                <input type="date" id="m-exp-date" class="input-control" required>
+                            </div>
+                            <div class="form-field" style="justify-content:flex-end;">
+                                <button type="submit" id="btn-submit-manual-grn" class="btn btn-brand">
+                                    <i class="fa-solid fa-cloud-arrow-up"></i> Save Batch to GRN Inventory
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- ==================== TAB 3: 2D BARCODE BULK MANIFEST SCANNER ==================== -->
+            <section id="tab-barcode2d" class="tab-panel">
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h2><i class="fa-solid fa-qrcode"></i> 2D Barcode Bulk Shipment Intake (QR / GS1 DataMatrix Manifest)</h2>
+                    </div>
+                    <p style="color:#64748b; font-size:0.9rem; margin-bottom:20px;">
+                        Scan a single 2D Manifest Barcode (QR or DataMatrix) from a supplier invoice to automatically unpack and insert an entire multi-item pharmaceutical shipment at once.
+                    </p>
+
+                    <div class="scanner-layout">
+                        <!-- Left: Camera / Hardware USB 2D Scanner -->
+                        <div class="scanner-box">
+                            <h4><i class="fa-solid fa-camera"></i> Live 2D Barcode Scanner</h4>
+                            <p style="font-size:0.82rem; color:#94a3b8; margin-top:4px;">Use webcam or plug in a USB 2D handheld scanner</p>
+                            <div id="qr-reader"></div>
+                            <div style="display:flex; gap:10px; justify-content:center; margin-top:12px;">
+                                <button type="button" class="btn btn-brand" onclick="start2DCameraScanner()">
+                                    <i class="fa-solid fa-video"></i> Start Camera Scan
+                                </button>
+                                <button type="button" class="btn btn-outline" style="color:#fff; border-color:#475569;" onclick="stop2DCameraScanner()">
+                                    Stop Camera
+                                </button>
+                            </div>
+
+                            <div class="form-field" style="margin-top:18px; text-align:left;">
+                                <label style="color:#cbd5e1;">USB 2D Barcode Gun / Raw 2D Payload Input:</label>
+                                <textarea id="raw-2d-payload" rows="3" class="input-control" placeholder="Focus here when using a USB 2D Barcode Gun, or click 'Generate Sample 2D Shipment Barcode' on the right..."></textarea>
+                                <button type="button" class="btn btn-brand" style="margin-top:8px;" onclick="parse2DBarcodePayload()">
+                                    <i class="fa-solid fa-bolt"></i> Decode 2D Barcode Manifest
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Right: Built-in Sample 2D Shipment Barcode Generator for Demo -->
+                        <div class="qr-generator-card">
+                            <h4><i class="fa-solid fa-boxes-packing"></i> Supplier 2D Manifest Generator (Demo Tool)</h4>
+                            <p style="font-size:0.84rem; color:#64748b; margin-top:6px;">
+                                Generate a real 2D QR Manifest containing a bulk shipment of 6 medicine batches (including 1 expired test batch) to test instant bulk import.
+                            </p>
+                            <div id="generated-qr-container"></div>
+                            <button type="button" class="btn btn-outline" onclick="generateSample2DManifest()">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> Generate & Load Sample 2D Shipment Barcode
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Decoded 2D Manifest Preview Table -->
+                <div id="decoded-manifest-card" class="panel-card hidden">
+                    <div class="panel-header">
+                        <h2><i class="fa-solid fa-list-check"></i> Decoded 2D Shipment Manifest Preview (<span id="manifest-item-count">0</span> Batches)</h2>
+                        <button type="button" id="btn-commit-bulk" class="btn btn-brand" onclick="commitBulkManifestToSupabase()">
+                            <i class="fa-solid fa-check-double"></i> Confirm & Import Entire Stock to Supabase
+                        </button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Medicine Name</th>
+                                    <th>Batch #</th>
+                                    <th>Category</th>
+                                    <th>Supplier</th>
+                                    <th>Qty</th>
+                                    <th>Unit Cost</th>
+                                    <th>Selling Price</th>
+                                    <th>Expiry Date</th>
+                                    <th>Rack</th>
+                                </tr>
+                            </thead>
+                            <tbody id="manifest-preview-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== TAB 4: EXPIRED MEDICINES QUARANTINE & REMOVAL ==================== -->
+            <section id="tab-expired" class="tab-panel">
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <div>
+                            <h2><i class="fa-solid fa-skull-crossbones" style="color:#dc2626;"></i> Expired Medicines Removal Queue</h2>
+                            <p style="font-size:0.86rem; color:#64748b;">
+                                Remove these expired medicines from their physical shelf racks, then click <strong>"Done (Remove from Stock)"</strong> to purge them from inventory.
+                            </p>
+                        </div>
+                        <button type="button" class="btn btn-danger-done" onclick="removeAllExpiredStock()">
+                            <i class="fa-solid fa-broom"></i> Done All (Purge All Expired)
+                        </button>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Medicine Name</th>
+                                    <th>Batch # / GRN #</th>
+                                    <th>Physical Shelf Location</th>
+                                    <th>Remaining Units</th>
+                                    <th>Expired On</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="expired-queue-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </div>
+
+    <script src="grn.js"></script>
+</body>
+</html>
