@@ -2,8 +2,8 @@
    PHARMACONNECT - DYNAMIC MULTI-TENANT ADMIN CONTROLLER
    ============================================================================ */
 
-const SUPABASE_URL = 'YOUR_SUPABASE_PROJECT_URL';
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const SUPABASE_URL = 'https://juobkaftyrzlxbviudpy.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_qdME8AYk9rz5B4FHs4Eb1g_0vvhN73v';
 
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
