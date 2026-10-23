@@ -25,37 +25,32 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_
 // ==================== ENCRYPTION HELPERS ====================
 const SECRET_KEY = "PC_SECURE_2026_";
 
-// Encrypts password for database storage
 function encryptPassword(pwd) {
     return btoa(SECRET_KEY + pwd).split('').reverse().join('');
 }
 
-// Decrypts password for Admin UI reveal
 function decryptPassword(encPwd) {
     try {
         const decoded = atob(encPwd.split('').reverse().join(''));
         if (decoded.startsWith(SECRET_KEY)) {
             return decoded.replace(SECRET_KEY, '');
         }
-        return encPwd; // Fallback for old plain-text test accounts
+        return encPwd; 
     } catch (e) {
-        return encPwd; // Fallback
+        return encPwd; 
     }
 }
 
-// Password toggle UI logic
 window.togglePasswordVisibility = function(btnElement, encryptedPwd) {
     const codeEl = btnElement.previousElementSibling;
     const icon = btnElement.querySelector('i');
     
     if (codeEl.getAttribute('data-hidden') === 'true') {
-        // Reveal password
         codeEl.textContent = decryptPassword(encryptedPwd);
         codeEl.setAttribute('data-hidden', 'false');
         codeEl.style.letterSpacing = 'normal';
         icon.classList.replace('fa-eye', 'fa-eye-slash');
     } else {
-        // Hide password
         codeEl.textContent = '••••••••';
         codeEl.setAttribute('data-hidden', 'true');
         codeEl.style.letterSpacing = '2px';
@@ -165,7 +160,7 @@ async function refreshAllAdminData() {
     renderCatalogTable();
 }
 
-// ==================== COUNTER FILTER & DASHBOARD CHARTS ====================
+// ==================== COUNTER & TIME FILTERS & DASHBOARD CHARTS ====================
 function populateCounterFilterDropdown() {
     const select = document.getElementById('counter-filter-select');
     const previousValue = select.value || 'ALL';
@@ -193,17 +188,48 @@ function populateCounterFilterDropdown() {
 
 function renderDashboardAnalytics() {
     const selectedCounter = document.getElementById('counter-filter-select').value;
+    const selectedTime = document.getElementById('time-filter-select').value;
 
-    const filteredSales = selectedCounter === 'ALL'
-        ? salesRecords
-        : salesRecords.filter((s) => s.counter_name === selectedCounter);
+    // Determine the time cutoff based on dropdown
+    const now = new Date();
+    let startTime = new Date(0); // Epoch (All time)
+
+    if (selectedTime === 'TODAY') {
+        startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    } else if (selectedTime === 'WEEK') {
+        startTime = new Date();
+        startTime.setDate(now.getDate() - 7);
+    } else if (selectedTime === 'MONTH') {
+        startTime = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+
+    // Apply Time + Counter filters to Sales
+    const filteredSales = salesRecords.filter((s) => {
+        const matchCounter = selectedCounter === 'ALL' || s.counter_name === selectedCounter;
+        const saleDate = new Date(s.sold_at);
+        const matchTime = saleDate >= startTime;
+        return matchCounter && matchTime;
+    });
+
+    // Apply Time filter to GRN expenses
+    const timeFilteredGrnBatches = grnBatches.filter((b) => {
+        const batchDate = new Date(b.created_at);
+        return batchDate >= startTime;
+    });
+
+    const timeLabel = selectedTime === 'ALL' ? 'All Time' :
+                      selectedTime === 'TODAY' ? 'Today' :
+                      selectedTime === 'WEEK' ? 'Last 7 Days' : 'This Month';
 
     document.getElementById('counter-sales-summary-badge').textContent =
-        `${filteredSales.length} Sales Transactions (${selectedCounter === 'ALL' ? 'All Counters' : selectedCounter})`;
+        `${filteredSales.length} Transactions Found (${timeLabel})`;
 
+    // Calculate Dynamic KPIs
     const totalSalesRevenue = filteredSales.reduce((acc, s) => acc + Number(s.total_amount || 0), 0);
     const totalSalesProfit = filteredSales.reduce((acc, s) => acc + Number(s.profit_amount || 0), 0);
-    const totalGrnExpenses = grnBatches.reduce((acc, b) => acc + (Number(b.quantity_received || 0) * Number(b.unit_cost || 0)), 0);
+    const totalGrnExpenses = timeFilteredGrnBatches.reduce((acc, b) => acc + (Number(b.quantity_received || 0) * Number(b.unit_cost || 0)), 0);
+    
+    // Active stock valuation remains an all-time snapshot of current physical shelves
     const activeStockValuation = grnBatches.reduce((acc, b) => acc + (Number(b.current_quantity || 0) * Number(b.selling_price || 0)), 0);
 
     const todayStr = new Date().toISOString().split('T')[0];
@@ -214,20 +240,23 @@ function renderDashboardAnalytics() {
     document.getElementById('kpi-cash-inflow').textContent = `LKR ${formatCurrency(totalSalesRevenue)}`;
     document.getElementById('kpi-sales-count').textContent = `Across ${filteredSales.length} counter bills`;
     document.getElementById('kpi-grn-expenses').textContent = `LKR ${formatCurrency(totalGrnExpenses)}`;
-    document.getElementById('kpi-grn-batches').textContent = `${grnBatches.length} GRN batches recorded`;
+    document.getElementById('kpi-grn-batches').textContent = `${timeFilteredGrnBatches.length} batches recorded in period`;
     document.getElementById('kpi-net-profit').textContent = `LKR ${formatCurrency(totalSalesProfit)}`;
     document.getElementById('kpi-profit-margin').textContent = `Gross Margin: ${profitMargin}%`;
     document.getElementById('kpi-stock-value').textContent = `LKR ${formatCurrency(activeStockValuation)}`;
     document.getElementById('kpi-expired-warning').textContent = `${expiredCount} expired batches requiring removal`;
 
-    renderCharts(filteredSales, totalGrnExpenses);
-    renderCounterBreakdownTable();
+    renderCharts(filteredSales, timeFilteredGrnBatches);
+    
+    // Pass the specifically filtered sales to the table so it also respects the time limit!
+    renderCounterBreakdownTable(filteredSales);
 }
 
-function renderCharts(filteredSales, totalGrnExpenses) {
+function renderCharts(filteredSales, timeFilteredGrnBatches) {
     const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--brand-primary').trim() || '#0d9488';
     const secondaryColor = getComputedStyle(document.documentElement).getPropertyValue('--brand-secondary').trim() || '#0284c7';
 
+    // 1. Cash Flow Trend Chart (Always shows trailing 6 days for visual trend)
     const dayLabels = [];
     const revenueSeries = [];
     const profitSeries = [];
@@ -241,7 +270,7 @@ function renderCharts(filteredSales, totalGrnExpenses) {
         dayLabels.push(label);
 
         const daySales = filteredSales.filter((s) => (s.sold_at || '').startsWith(dateKey));
-        const dayGrn = grnBatches.filter((b) => (b.created_at || '').startsWith(dateKey));
+        const dayGrn = timeFilteredGrnBatches.filter((b) => (b.created_at || '').startsWith(dateKey));
 
         revenueSeries.push(daySales.reduce((sum, s) => sum + Number(s.total_amount || 0), 0));
         profitSeries.push(daySales.reduce((sum, s) => sum + Number(s.profit_amount || 0), 0));
@@ -269,6 +298,7 @@ function renderCharts(filteredSales, totalGrnExpenses) {
         }
     });
 
+    // 2. Most Sold Medicines Chart (Dynamic based on selected time filter)
     const medTotals = {};
     filteredSales.forEach((sale) => {
         const name = sale.medicine_name || 'Unknown';
@@ -276,7 +306,7 @@ function renderCharts(filteredSales, totalGrnExpenses) {
     });
 
     const sortedMeds = Object.entries(medTotals).sort((a, b) => b[1] - a[1]).slice(0, 6);
-    const medLabels = sortedMeds.length > 0 ? sortedMeds.map((i) => i[0]) : ['No Sales Yet'];
+    const medLabels = sortedMeds.length > 0 ? sortedMeds.map((i) => i[0]) : ['No Sales Found in Period'];
     const medQuantities = sortedMeds.length > 0 ? sortedMeds.map((i) => i[1]) : [0];
 
     const ctxTop = document.getElementById('topMedicinesChart').getContext('2d');
@@ -303,25 +333,30 @@ function renderCharts(filteredSales, totalGrnExpenses) {
     });
 }
 
-function renderCounterBreakdownTable() {
+function renderCounterBreakdownTable(filteredSalesData) {
     const tbody = document.getElementById('counter-performance-tbody');
     tbody.innerHTML = '';
 
     const counterMap = {};
+    const selectedCounter = document.getElementById('counter-filter-select').value;
 
+    // Pre-populate so registered counters always show up, even with 0 sales in the period
     staffRecords.filter((s) => s.role === 'cashier').forEach((s) => {
         const key = s.counter_name || 'Unassigned Counter';
-        counterMap[key] = {
-            counter_name: key,
-            cashier_username: s.username,
-            bills: 0,
-            units: 0,
-            revenue: 0,
-            profit: 0
-        };
+        if (selectedCounter === 'ALL' || key === selectedCounter) {
+            counterMap[key] = {
+                counter_name: key,
+                cashier_username: s.username,
+                bills: 0,
+                units: 0,
+                revenue: 0,
+                profit: 0
+            };
+        }
     });
 
-    salesRecords.forEach((s) => {
+    // Populate actual time-filtered sales
+    filteredSalesData.forEach((s) => {
         const key = s.counter_name || 'Main Counter';
         if (!counterMap[key]) {
             counterMap[key] = { counter_name: key, cashier_username: s.cashier_username || 'cashier', bills: 0, units: 0, revenue: 0, profit: 0 };
@@ -334,7 +369,7 @@ function renderCounterBreakdownTable() {
 
     const rows = Object.values(counterMap);
     if (rows.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#64748b;">No counters or sales recorded yet. Register a Cashier in "Staff & Counter Logins" or click "Simulate Counter Sales".</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#64748b;">No sales recorded for this period.</td></tr>`;
         return;
     }
 
@@ -383,7 +418,6 @@ async function handleCreateStaff(e) {
     btn.disabled = true;
 
     try {
-        // ENCRYPT PASSWORD BEFORE SAVING
         const encryptedPassword = encryptPassword(rawPassword);
 
         const { error } = await supabaseClient
@@ -431,7 +465,6 @@ function renderStaffTable() {
             <td>${escapeHtml(staff.counter_name || '---')}</td>
             <td><code>${escapeHtml(staff.username)}</code></td>
             <td>
-                <!-- Hidden Password with Reveal Toggle -->
                 <div style="display:flex; align-items:center; gap:8px;">
                     <code data-hidden="true" style="font-size:1.1rem; letter-spacing:2px; min-width:80px; display:inline-block; border-radius:6px;">••••••••</code>
                     <button class="btn btn-outline" style="padding:4px 10px; border:none; background:transparent;" onclick="togglePasswordVisibility(this, '${staff.password}')" title="Reveal Password">
@@ -540,7 +573,9 @@ async function seedSampleCounterSales() {
         const med = sampleMeds[Math.floor(Math.random() * sampleMeds.length)];
         const c = counters[Math.floor(Math.random() * counters.length)];
         const qty = Math.floor(Math.random() * 25) + 5;
-        const daysAgo = Math.floor(Math.random() * 5);
+        
+        // Randomize the dates specifically to test the new Time filters!
+        const daysAgo = Math.floor(Math.random() * 10); 
         const saleDate = new Date();
         saleDate.setDate(saleDate.getDate() - daysAgo);
 
@@ -565,7 +600,7 @@ async function seedSampleCounterSales() {
         return;
     }
 
-    showToast('12 Counter Sales simulated!');
+    showToast('12 Counter Sales simulated! Test out your Time Filters!');
     await refreshAllAdminData();
 }
 

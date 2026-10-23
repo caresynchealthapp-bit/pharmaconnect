@@ -93,14 +93,29 @@
 
             <!-- ==================== TAB 1: EXECUTIVE DASHBOARD ==================== -->
             <section id="tab-dashboard" class="tab-panel active">
-                <!-- Counter & Date Filter Bar -->
+                
+                <!-- Dual Filter Bar: Counter + Time Period -->
                 <div class="filter-toolbar">
-                    <div class="filter-group">
-                        <label for="counter-filter-select"><i class="fa-solid fa-cash-register"></i> Filter by Cashier Counter:</label>
-                        <select id="counter-filter-select" class="select-control" onchange="renderDashboardAnalytics()">
-                            <option value="ALL">All Counters (Combined Pharmacy Sales)</option>
-                        </select>
+                    <div style="display:flex; gap:20px; flex-wrap:wrap;">
+                        <div class="filter-group">
+                            <label for="counter-filter-select"><i class="fa-solid fa-cash-register"></i> Filter by Counter:</label>
+                            <select id="counter-filter-select" class="select-control" onchange="renderDashboardAnalytics()">
+                                <option value="ALL">All Counters (Combined Pharmacy Sales)</option>
+                            </select>
+                        </div>
+                        
+                        <!-- NEW TIME PERIOD FILTER -->
+                        <div class="filter-group">
+                            <label for="time-filter-select"><i class="fa-regular fa-calendar-days"></i> Time Period:</label>
+                            <select id="time-filter-select" class="select-control" onchange="renderDashboardAnalytics()">
+                                <option value="ALL">All Time</option>
+                                <option value="TODAY">Today's Shift</option>
+                                <option value="WEEK">Last 7 Days</option>
+                                <option value="MONTH">This Month</option>
+                            </select>
+                        </div>
                     </div>
+                    
                     <div class="filter-group">
                         <span id="counter-sales-summary-badge" class="badge badge-info">0 Transactions Filtered</span>
                     </div>
@@ -121,7 +136,7 @@
                         <div class="kpi-info">
                             <span>GRN Stock Expenses</span>
                             <h3 id="kpi-grn-expenses">LKR 0.00</h3>
-                            <small id="kpi-grn-batches">0 total batches received</small>
+                            <small id="kpi-grn-batches">0 batches recorded</small>
                         </div>
                         <div class="kpi-icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
                     </div>
