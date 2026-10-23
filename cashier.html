@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POS Cashier Terminal | PharmaConnect</title>
+
+    <!-- Google Fonts & Font Awesome -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Supabase JS SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- Shared Portal Styles + Dedicated Cashier POS Styles -->
+    <link rel="stylesheet" href="portal.css">
+    <link rel="stylesheet" href="cashier.css">
+</head>
+<body>
+
+    <div id="toast-container"></div>
+
+    <!-- ==================== LEFT SIDEBAR ==================== -->
+    <aside class="sidebar no-print">
+        <div id="sidebar-banner" class="sidebar-tenant-banner">
+            <div class="sidebar-tenant-overlay"></div>
+            <div class="sidebar-tenant-content">
+                <span class="tenant-portal-tag"><i class="fa-solid fa-cash-register"></i> POS Terminal</span>
+                <h2 id="sidebar-pharmacy-name" class="tenant-name">Loading Pharmacy...</h2>
+                <div class="tenant-meta">
+                    <i class="fa-solid fa-id-card"></i>
+                    <span id="sidebar-pharmacy-license">REG: ---</span>
+                </div>
+                <div class="tenant-meta" style="margin-top: 4px;">
+                    <i class="fa-solid fa-location-dot"></i>
+                    <span id="sidebar-pharmacy-city">---</span>
+                </div>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <button class="nav-item active" onclick="switchCashierTab('pos', this)">
+                <span class="nav-item-left"><i class="fa-solid fa-cart-shopping"></i> POS Billing Terminal</span>
+            </button>
+            <button class="nav-item" onclick="switchCashierTab('daylog', this)">
+                <span class="nav-item-left"><i class="fa-solid fa-clock-rotate-left"></i> Today's Business Log</span>
+                <span id="sidebar-today-count" class="badge badge-info" style="font-size:0.72rem;">0</span>
+            </button>
+            <button class="nav-item" onclick="switchCashierTab('stocklookup', this)">
+                <span class="nav-item-left"><i class="fa-solid fa-magnifying-glass-location"></i> Shelf & Stock Lookup</span>
+            </button>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="user-session-box">
+                <div class="user-avatar"><i class="fa-solid fa-user-tag"></i></div>
+                <div class="user-info">
+                    <strong id="session-cashier-name">Cashier</strong>
+                    <span id="session-counter-name">Counter 01</span>
+                </div>
+            </div>
+            <button class="btn-logout" onclick="logoutCashier()">
+                <i class="fa-solid fa-right-from-bracket"></i> Close Counter & Exit
+            </button>
+        </div>
+    </aside>
+
+    <!-- ==================== MAIN WORKSPACE ==================== -->
+    <div class="main-workspace no-print">
+        <header class="topbar">
+            <div class="topbar-title">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <h1 id="active-counter-heading">Point of Sale Terminal</h1>
+                    <span id="active-counter-pill" class="counter-live-pill">Counter 01</span>
+                </div>
+                <p id="live-datetime-display">Loading shift time...</p>
+            </div>
+
+            <div class="topbar-actions">
+                <div class="shift-mini-stat">
+                    <span>Today's Counter Sales:</span>
+                    <strong id="topbar-today-total">LKR 0.00</strong>
+                </div>
+                <button class="btn btn-outline" onclick="refreshCashierData()">
+                    <i class="fa-solid fa-arrows-rotate"></i> Sync Stock
+                </button>
+            </div>
+        </header>
+
+        <div class="content-area pos-content-area">
+
+            <!-- ==================== TAB 1: POS BILLING TERMINAL ==================== -->
+            <section id="tab-pos" class="tab-panel active">
+                <div class="pos-split-layout">
+
+                    <!-- LEFT COLUMN: SEARCH, BARCODE INPUT & MEDICINE CATALOG -->
+                    <div class="pos-catalog-column">
+                        <!-- Dual Search & Barcode Scanner Bar -->
+                        <div class="pos-search-bar-card">
+                            <div class="pos-input-group">
+                                <label for="pos-medicine-search">
+                                    <i class="fa-solid fa-magnifying-glass"></i> Search Product Name / Generic / Rack <kbd>F2</kbd>
+                                </label>
+                                <input 
+                                    type="search" 
+                                    id="pos-medicine-search" 
+                                    class="input-control" 
+                                    placeholder="Type medicine name (e.g., Panadol, Amoxicillin)..." 
+                                    autocomplete="off"
+                                >
+                            </div>
+
+                            <div class="pos-input-group barcode-group">
+                                <label for="pos-barcode-input">
+                                    <i class="fa-solid fa-barcode"></i> Scan Barcode / Batch # <kbd>F4</kbd>
+                                </label>
+                                <div style="display:flex; gap:8px;">
+                                    <input 
+                                        type="text" 
+                                        id="pos-barcode-input" 
+                                        class="input-control barcode-input" 
+                                        placeholder="Scan or type Batch/Barcode & press Enter" 
+                                        autocomplete="off"
+                                    >
+                                    <button type="button" class="btn btn-brand" onclick="triggerBarcodeLookup()" title="Add by Barcode/Batch">
+                                        <i class="fa-solid fa-plus"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Dosage Category Filter Pills -->
+                        <div class="category-pills-bar" id="pos-category-pills">
+                            <button class="cat-pill active" onclick="filterByCategory('ALL', this)">All Items</button>
+                            <button class="cat-pill" onclick="filterByCategory('Tablet', this)">Tablets</button>
+                            <button class="cat-pill" onclick="filterByCategory('Capsule', this)">Capsules</button>
+                            <button class="cat-pill" onclick="filterByCategory('Syrup', this)">Syrups</button>
+                            <button class="cat-pill" onclick="filterByCategory('Inhaler', this)">Inhalers</button>
+                            <button class="cat-pill" onclick="filterByCategory('Injection', this)">Injections</button>
+                            <button class="cat-pill" onclick="filterByCategory('Ointment', this)">Ointments</button>
+                        </div>
+
+                        <!-- Available Stock Cards Grid (Sorted by FEFO) -->
+                        <div id="pos-medicine-grid" class="pos-medicine-grid"></div>
+                    </div>
+
+                    <!-- RIGHT COLUMN: LIVE BILLING CART & CHECKOUT -->
+                    <div class="pos-cart-column">
+                        <div class="pos-cart-card">
+                            <div class="cart-header">
+                                <div>
+                                    <span class="cart-invoice-tag" id="current-invoice-no">INV-2026-0001</span>
+                                    <h3>Current Customer Bill</h3>
+                                </div>
+                                <button type="button" class="btn-clear-cart" onclick="clearCart()">
+                                    <i class="fa-solid fa-trash-can"></i> Clear
+                                </button>
+                            </div>
+
+                            <!-- Optional Customer Info -->
+                            <div class="cart-customer-box">
+                                <input type="text" id="cust-name" placeholder="Customer Name (Walk-in Customer)">
+                                <input type="tel" id="cust-phone" placeholder="Phone / Rx Ref (Optional)">
+                            </div>
+
+                            <!-- Cart Items List -->
+                            <div id="pos-cart-items" class="cart-items-container"></div>
+
+                            <!-- Bill Summary & Discounts -->
+                            <div class="cart-summary-section">
+                                <div class="summary-row">
+                                    <span>Subtotal (<span id="cart-total-items">0</span> units)</span>
+                                    <strong id="cart-subtotal">LKR 0.00</strong>
+                                </div>
+
+                                <div class="summary-row discount-row">
+                                    <label for="cart-discount-pct">Discount (%)</label>
+                                    <input 
+                                        type="number" 
+                                        id="cart-discount-pct" 
+                                        min="0" 
+                                        max="100" 
+                                        step="0.5" 
+                                        value="0" 
+                                        oninput="recalculateCartTotals()"
+                                    >
+                                </div>
+
+                                <div class="summary-row">
+                                    <span>Discount Amount</span>
+                                    <span id="cart-discount-amt" style="color:var(--danger); font-weight:700;">- LKR 0.00</span>
+                                </div>
+
+                                <div class="summary-row grand-total-row">
+                                    <span>Net Payable</span>
+                                    <h2 id="cart-grand-total">LKR 0.00</h2>
+                                </div>
+
+                                <!-- Payment Method Selector -->
+                                <div class="payment-method-selector">
+                                    <button type="button" class="pay-method-btn active" onclick="selectPaymentMethod('Cash', this)">
+                                        <i class="fa-solid fa-money-bill-wave"></i> Cash
+                                    </button>
+                                    <button type="button" class="pay-method-btn" onclick="selectPaymentMethod('Card', this)">
+                                        <i class="fa-solid fa-credit-card"></i> Card
+                                    </button>
+                                    <button type="button" class="pay-method-btn" onclick="selectPaymentMethod('LankaQR', this)">
+                                        <i class="fa-solid fa-qrcode"></i> QR Pay
+                                    </button>
+                                </div>
+
+                                <!-- Cash Tendered & Change Calculator -->
+                                <div id="cash-tender-box" class="cash-tender-box">
+                                    <div class="tender-input-row">
+                                        <label for="cash-received-input">Cash Received (LKR)</label>
+                                        <input 
+                                            type="number" 
+                                            id="cash-received-input" 
+                                            placeholder="0.00" 
+                                            step="0.01" 
+                                            oninput="calculateChangeBalance()"
+                                        >
+                                    </div>
+                                    <div class="quick-cash-pills">
+                                        <button type="button" onclick="setQuickCash('EXACT')">Exact</button>
+                                        <button type="button" onclick="setQuickCash(500)">+500</button>
+                                        <button type="button" onclick="setQuickCash(1000)">+1000</button>
+                                        <button type="button" onclick="setQuickCash(5000)">+5000</button>
+                                    </div>
+                                    <div class="change-due-row">
+                                        <span>Balance / Change to Return:</span>
+                                        <strong id="cash-change-display">LKR 0.00</strong>
+                                    </div>
+                                </div>
+
+                                <button type="button" id="btn-complete-sale" class="btn btn-brand btn-checkout" onclick="finalizeSaleAndPrint()">
+                                    <i class="fa-solid fa-print"></i> Complete Order & Print Bill
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- ==================== TAB 2: TODAY'S BUSINESS LOG ==================== -->
+            <section id="tab-daylog" class="tab-panel">
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="kpi-info">
+                            <span>Today's Total Revenue</span>
+                            <h3 id="log-kpi-revenue">LKR 0.00</h3>
+                            <small id="log-kpi-date">Today's Shift</small>
+                        </div>
+                        <div class="kpi-icon"><i class="fa-solid fa-sack-dollar"></i></div>
+                    </div>
+
+                    <div class="kpi-card">
+                        <div class="kpi-info">
+                            <span>Invoices Issued Today</span>
+                            <h3 id="log-kpi-invoices">0 Bills</h3>
+                            <small>Completed checkouts</small>
+                        </div>
+                        <div class="kpi-icon"><i class="fa-solid fa-receipt"></i></div>
+                    </div>
+
+                    <div class="kpi-card">
+                        <div class="kpi-info">
+                            <span>Medicine Units Sold Today</span>
+                            <h3 id="log-kpi-units">0 Units</h3>
+                            <small>Deducted from GRN stock</small>
+                        </div>
+                        <div class="kpi-icon"><i class="fa-solid fa-pills"></i></div>
+                    </div>
+
+                    <div class="kpi-card">
+                        <div class="kpi-info">
+                            <span>Today's Net Profit</span>
+                            <h3 id="log-kpi-profit">LKR 0.00</h3>
+                            <small>Synced with Admin Console</small>
+                        </div>
+                        <div class="kpi-icon"><i class="fa-solid fa-chart-line"></i></div>
+                    </div>
+                </div>
+
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <div>
+                            <h2><i class="fa-solid fa-clipboard-list"></i> Today's Business Transaction Log</h2>
+                            <p style="font-size:0.84rem; color:#64748b;">Every sale below is synced live with the Admin financial dashboard.</p>
+                        </div>
+                        <div style="display:flex; gap:12px; align-items:center;">
+                            <select id="daylog-counter-filter" class="select-control" onchange="renderTodayBusinessLog()">
+                                <option value="MY_COUNTER">My Counter Only</option>
+                                <option value="ALL_COUNTERS">All Pharmacy Counters</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Invoice #</th>
+                                    <th>Counter & Cashier</th>
+                                    <th>Items Dispensed</th>
+                                    <th>Total Units</th>
+                                    <th>Total Bill (LKR)</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="today-log-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== TAB 3: SHELF & STOCK LOOKUP ==================== -->
+            <section id="tab-stocklookup" class="tab-panel">
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h2><i class="fa-solid fa-magnifying-glass-location"></i> Quick Physical Shelf & Batch Lookup</h2>
+                        <input type="search" id="lookup-search-input" class="input-control" style="min-width:280px;" placeholder="Search medicine or shelf rack..." oninput="renderShelfLookupTable()">
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Medicine Name</th>
+                                    <th>Category</th>
+                                    <th>Shelf / Rack Location</th>
+                                    <th>Batch #</th>
+                                    <th>Available Stock</th>
+                                    <th>Selling Price (MRP)</th>
+                                    <th>Expiry Date</th>
+                                    <th>Quick Add</th>
+                                </tr>
+                            </thead>
+                            <tbody id="shelf-lookup-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </div>
+
+    <!-- ==================== FULL-OPTION PRINTABLE RECEIPT MODAL ==================== -->
+    <div id="receipt-modal" class="receipt-modal-backdrop hidden">
+        <div class="receipt-modal-container">
+
+            <!-- Left Side: Full Print Customization Options (Hidden when actually printing) -->
+            <div class="receipt-options-sidebar no-print">
+                <div class="options-header">
+                    <h3><i class="fa-solid fa-sliders"></i> Print Bill Options</h3>
+                    <p>Customize the layout before sending to your printer.</p>
+                </div>
+
+                <div class="option-group">
+                    <label>Paper / Printer Format</label>
+                    <select id="opt-paper-size" class="select-control" onchange="applyReceiptOptions()">
+                        <option value="thermal-80mm">80mm Thermal POS Receipt</option>
+                        <option value="a4-invoice">A4 Standard Pharmacy Invoice</option>
+                    </select>
+                </div>
+
+                <div class="option-toggles">
+                    <label class="toggle-item">
+                        <input type="checkbox" id="opt-show-header" checked onchange="applyReceiptOptions()">
+                        <span>Show Pharmacy License & Address</span>
+                    </label>
+                    <label class="toggle-item">
+                        <input type="checkbox" id="opt-show-customer" checked onchange="applyReceiptOptions()">
+                        <span>Show Customer Name & Phone</span>
+                    </label>
+                    <label class="toggle-item">
+                        <input type="checkbox" id="opt-show-batch" checked onchange="applyReceiptOptions()">
+                        <span>Show Batch # & Expiry Date</span>
+                    </label>
+                    <label class="toggle-item">
+                        <input type="checkbox" id="opt-show-discount" checked onchange="applyReceiptOptions()">
+                        <span>Show Discount & Savings Breakdown</span>
+                    </label>
+                    <label class="toggle-item">
+                        <input type="checkbox" id="opt-show-barcode" checked onchange="applyReceiptOptions()">
+                        <span>Show Scannable Invoice Barcode</span>
+                    </label>
+                </div>
+
+                <div class="option-group">
+                    <label for="opt-footer-note">Custom Receipt Footer Note</label>
+                    <input type="text" id="opt-footer-note" class="input-control" value="Store medicines in a cool, dry place. Get well soon!" oninput="applyReceiptOptions()">
+                </div>
+
+                <div class="receipt-modal-actions">
+                    <button type="button" class="btn btn-brand" style="width:100%;" onclick="triggerBrowserPrint()">
+                        <i class="fa-solid fa-print"></i> Print Bill Now
+                    </button>
+                    <button type="button" class="btn btn-outline" style="width:100%;" onclick="closeReceiptModal()">
+                        <i class="fa-solid fa-plus"></i> Start Next Customer Bill
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right Side: Live Printable Receipt Preview -->
+            <div class="receipt-preview-stage">
+                <div id="printable-receipt-paper" class="receipt-paper thermal-80mm">
+                    <!-- Populated dynamically via cashier.js -->
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="cashier.js"></script>
+</body>
+</html>

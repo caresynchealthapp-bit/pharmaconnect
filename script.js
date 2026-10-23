@@ -448,7 +448,10 @@ async function handleRoleLogin(e) {
                 window.location.href = `grn.html?pharmacy_id=${encodeURIComponent(selectedPharmacy.id)}`;
             }, 500);
         } else {
-            showToast(`Authenticated as ${authenticatedStaff.full_name} (${authenticatedStaff.counter_name}). Cashier portal coming next!`);
+            showToast(`Welcome ${authenticatedStaff.full_name}! Launching ${authenticatedStaff.counter_name || 'POS'}...`);
+            setTimeout(() => {
+                window.location.href = `cashier.html?pharmacy_id=${encodeURIComponent(selectedPharmacy.id)}`;
+            }, 500);
         }
 
     } catch (err) {
