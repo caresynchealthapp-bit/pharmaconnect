@@ -28,21 +28,33 @@ function setupEventListeners() {
     const searchInput = document.getElementById('pharmacy-search-input');
     const clearBtn = document.getElementById('clear-search-btn');
 
-    searchInput.addEventListener('input', (e) => {
-        const query = e.target.value.trim();
-        clearBtn.classList.toggle('hidden', query.length === 0);
-        renderPharmacyTiles(query);
-    });
+    // Only attach search listeners if the search bar actually exists on this page
+    if (searchInput && clearBtn) {
+        searchInput.addEventListener('input', (e) => {
+            const query = e.target.value.trim();
+            clearBtn.classList.toggle('hidden', query.length === 0);
+            renderPharmacyTiles(query);
+        });
 
-    clearBtn.addEventListener('click', () => {
-        searchInput.value = '';
-        clearBtn.classList.add('hidden');
-        renderPharmacyTiles('');
-        searchInput.focus();
-    });
+        clearBtn.addEventListener('click', () => {
+            searchInput.value = '';
+            clearBtn.classList.add('hidden');
+            renderPharmacyTiles('');
+            searchInput.focus();
+        });
+    }
 
-    document.getElementById('register-pharmacy-form').addEventListener('submit', handleRegisterPharmacy);
-    document.getElementById('role-login-form').addEventListener('submit', handleRoleLogin);
+    // Only attach the register listener if the registration form exists
+    const registerForm = document.getElementById('register-pharmacy-form');
+    if (registerForm) {
+        registerForm.addEventListener('submit', handleRegisterPharmacy);
+    }
+
+    // Only attach the login listener if the login form exists
+    const roleLoginForm = document.getElementById('role-login-form');
+    if (roleLoginForm) {
+        roleLoginForm.addEventListener('submit', handleRoleLogin);
+    }
 }
 
 // ==================== LOAD PHARMACIES FROM SUPABASE ====================
