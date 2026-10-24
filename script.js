@@ -28,14 +28,21 @@ function setupEventListeners() {
     const searchInput = document.getElementById('pharmacy-search-input');
     const clearBtn = document.getElementById('clear-search-btn');
 
-    // Only attach search listeners if the search bar actually exists on this page
-    if (searchInput && clearBtn) {
+    if (searchInput) {
         searchInput.addEventListener('input', (e) => {
             const query = e.target.value.trim();
-            clearBtn.classList.toggle('hidden', query.length === 0);
+            
+            // Only try to toggle the custom clear button if it exists in the HTML
+            if (clearBtn) {
+                clearBtn.classList.toggle('hidden', query.length === 0);
+            }
+            
+            // Render the tiles based on the search query
             renderPharmacyTiles(query);
         });
+    }
 
+    if (clearBtn && searchInput) {
         clearBtn.addEventListener('click', () => {
             searchInput.value = '';
             clearBtn.classList.add('hidden');
@@ -44,13 +51,11 @@ function setupEventListeners() {
         });
     }
 
-    // Only attach the register listener if the registration form exists
     const registerForm = document.getElementById('register-pharmacy-form');
     if (registerForm) {
         registerForm.addEventListener('submit', handleRegisterPharmacy);
     }
 
-    // Only attach the login listener if the login form exists
     const roleLoginForm = document.getElementById('role-login-form');
     if (roleLoginForm) {
         roleLoginForm.addEventListener('submit', handleRoleLogin);
