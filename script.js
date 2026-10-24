@@ -507,10 +507,15 @@ function navigateTo(viewName) {
 
 function scrollToAbout(event) {
     event.preventDefault();
+    const targetHref = event.currentTarget.getAttribute('href') || '#about-section';
+    const targetId = targetHref.replace('#', '');
+
     navigateTo('home');
     setTimeout(() => {
-        const aboutEl = document.getElementById('about-section');
-        if (aboutEl) aboutEl.scrollIntoView({ behavior: 'smooth' });
+        const targetEl = document.getElementById(targetId);
+        if (targetEl) {
+            targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
     }, 100);
 }
 
