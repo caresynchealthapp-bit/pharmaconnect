@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PharmaConnect | Supplier QR Manifest Generator</title>
+    
+    <!-- Google Fonts & Font Awesome -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- QR Code Generator Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: #f1f5f9;
+            color: #0f172a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .generator-card {
+            background: #ffffff;
+            padding: 36px;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+        .generator-card h2 {
+            margin: 0 0 10px;
+            font-weight: 800;
+            color: #0d9488;
+        }
+        .generator-card p {
+            font-size: 0.9rem;
+            color: #64748b;
+            margin-bottom: 24px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            text-align: left;
+            margin-bottom: 16px;
+        }
+        .form-group label {
+            font-size: 0.85rem;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+        select {
+            padding: 12px;
+            border-radius: 10px;
+            border: 1.5px solid #cbd5e1;
+            font-family: inherit;
+            font-size: 1rem;
+            outline: none;
+        }
+        select:focus {
+            border-color: #0d9488;
+        }
+        .btn-generate {
+            background: linear-gradient(135deg, #0d9488, #0284c7);
+            color: #fff;
+            border: none;
+            padding: 14px;
+            border-radius: 10px;
+            width: 100%;
+            font-size: 1rem;
+            font-weight: 800;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: transform 0.2s;
+        }
+        .btn-generate:hover {
+            transform: translateY(-2px);
+        }
+        #qr-output-container {
+            margin-top: 30px;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+        }
+        #qr-code {
+            padding: 16px;
+            background: #fff;
+            border: 2px dashed #cbd5e1;
+            border-radius: 16px;
+            display: inline-block;
+        }
+        .raw-json-box {
+            margin-top: 20px;
+            width: 100%;
+        }
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
+            font-family: monospace;
+            font-size: 0.75rem;
+            resize: vertical;
+            color: #475569;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="generator-card">
+        <h2><i class="fa-solid fa-boxes-packing"></i> Supplier Manifest Generator</h2>
+        <p>Select the number of medicines to include in the shipment manifest QR code. Keeping numbers low makes the QR code easier for webcams to scan.</p>
+
+        <div class="form-group">
+            <label>Healthy Medicines (Good Expiry Date)</label>
+            <select id="healthy-count">
+                <option value="0">0 Items</option>
+                <option value="1" selected>1 Item</option>
+                <option value="2">2 Items</option>
+                <option value="3">3 Items</option>
+                <option value="4">4 Items</option>
+                <option value="5">5 Items</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Expired Medicines (Triggers GRN Expiry Alert)</label>
+            <select id="expired-count">
+                <option value="0" selected>0 Items</option>
+                <option value="1">1 Item</option>
+                <option value="2">2 Items</option>
+                <option value="3">3 Items</option>
+                <option value="4">4 Items</option>
+                <option value="5">5 Items</option>
+            </select>
+        </div>
+
+        <button class="btn-generate" onclick="generateQR()">
+            <i class="fa-solid fa-qrcode"></i> Generate Shipment QR Code
+        </button>
+
+        <div id="qr-output-container">
+            <div id="qr-code"></div>
+            
+            <div class="raw-json-box">
+                <label style="font-size: 0.8rem; font-weight: 700; color: #64748b; display: block; text-align: left; margin-bottom: 4px;">Raw JSON Data (Fallback):</label>
+                <textarea id="raw-json-output" rows="4" readonly onclick="this.select()"></textarea>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Database of sample medicines to pull from
+        const healthyMedicines = [
+            { n: 'Paracetamol BP 500mg', b: 'BTH-H01', c: 'Tablet', q: 1000, uc: 7.5, sp: 14.0, exp: '2027-11-15', r: 'Rack A-01' },
+            { n: 'Amoxicillin 250mg Caps', b: 'BTH-H02', c: 'Capsule', q: 500, uc: 22.0, sp: 38.0, exp: '2027-08-20', r: 'Rack A-02' },
+            { n: 'Azithromycin 500mg Tab', b: 'BTH-H03', c: 'Tablet', q: 300, uc: 85.0, sp: 135.0, exp: '2028-01-10', r: 'Rack B-01' },
+            { n: 'Salbutamol Inhaler 100mcg', b: 'BTH-H04', c: 'Inhaler', q: 120, uc: 480.0, sp: 690.0, exp: '2027-06-30', r: 'Rack C-04' },
+            { n: 'Omeprazole 20mg Gastro', b: 'BTH-H05', c: 'Capsule', q: 800, uc: 14.0, sp: 25.0, exp: '2027-09-12', r: 'Rack A-05' }
+        ];
+
+        const expiredMedicines = [
+            { n: 'Cough Syrup (TEST EXPIRED)', b: 'EXP-E01', c: 'Syrup', q: 45, uc: 210.0, sp: 340.0, exp: '2023-12-01', r: 'Rack D-09' },
+            { n: 'Vitamin C 500mg (TEST EXPIRED)', b: 'EXP-E02', c: 'Tablet', q: 200, uc: 12.0, sp: 20.0, exp: '2024-05-15', r: 'Rack B-02' },
+            { n: 'Ibuprofen 400mg (TEST EXPIRED)', b: 'EXP-E03', c: 'Tablet', q: 150, uc: 15.0, sp: 25.0, exp: '2024-01-10', r: 'Rack A-03' },
+            { n: 'Eye Drops 10ml (TEST EXPIRED)', b: 'EXP-E04', c: 'Inhaler', q: 30, uc: 350.0, sp: 450.0, exp: '2024-03-22', r: 'Rack C-01' },
+            { n: 'Pain Relief Cream (TEST EXPIRED)', b: 'EXP-E05', c: 'Ointment', q: 60, uc: 180.0, sp: 280.0, exp: '2024-08-30', r: 'Rack E-05' }
+        ];
+
+        let qrInstance = null;
+
+        function generateQR() {
+            const hCount = parseInt(document.getElementById('healthy-count').value);
+            const eCount = parseInt(document.getElementById('expired-count').value);
+
+            if (hCount === 0 && eCount === 0) {
+                alert("Please select at least 1 medicine to generate a manifest.");
+                return;
+            }
+
+            // Slice the requested amount from the sample arrays
+            const selectedHealthy = healthyMedicines.slice(0, hCount);
+            const selectedExpired = expiredMedicines.slice(0, eCount);
+            const allItems = [...selectedHealthy, ...selectedExpired];
+
+            // Build the JSON Payload
+            const manifest = {
+                grn: `GRN-2D-${Math.floor(1000 + Math.random() * 9000)}`,
+                supplier: 'State Pharmaceuticals Corp (SPC)',
+                items: allItems
+            };
+
+            const jsonString = JSON.stringify(manifest);
+
+            // Output JSON to text area
+            document.getElementById('raw-json-output').value = jsonString;
+
+            // Generate QR Code
+            const qrBox = document.getElementById('qr-code');
+            qrBox.innerHTML = ''; // Clear old code
+
+            qrInstance = new QRCode(qrBox, {
+                text: jsonString,
+                width: 250, // slightly larger for easier scanning
+                height: 250,
+                colorDark : "#0f172a",
+                colorLight : "#ffffff",
+                // 'L' is the lowest error correction. It makes the barcode significantly less dense/complex,
+                // which is exactly what webcams need to read large JSON payloads easily!
+                correctLevel : QRCode.CorrectLevel.L 
+            });
+
+            document.getElementById('qr-output-container').style.display = 'flex';
+        }
+    </script>
+</body>
+</html>

@@ -255,25 +255,23 @@
             <!-- ==================== TAB 3: 2D BARCODE BULK MANIFEST SCANNER ==================== -->
             <section id="tab-barcode2d" class="tab-panel">
                 <div class="panel-card">
-                    <div class="panel-header">
-                        <h2><i class="fa-solid fa-qrcode"></i> 2D Barcode Bulk Shipment Intake (QR / GS1 DataMatrix Manifest)</h2>
+                    <div class="panel-header" style="justify-content: center; text-align: center;">
+                        <h2><i class="fa-solid fa-qrcode"></i> 2D Barcode Bulk Shipment Intake (QR / GS1 DataMatrix)</h2>
                     </div>
-                    <p style="color:#64748b; font-size:0.9rem; margin-bottom:20px;">
-                        Scan a single 2D Manifest Barcode (QR or DataMatrix) from a supplier invoice to automatically unpack and insert an entire multi-item pharmaceutical shipment at once.
+                    <p style="color:#64748b; font-size:0.9rem; margin-bottom:24px; text-align: center;">
+                        Scan a single 2D Manifest Barcode from a supplier invoice to automatically unpack and insert an entire multi-item pharmaceutical shipment at once.
                     </p>
 
-                    <div class="scanner-layout">
-                        <!-- Left: Camera / Hardware USB 2D Scanner -->
-                        <!-- Left: Camera / Hardware USB 2D Scanner -->
+                    <!-- Centered Scanner Box -->
+                    <div style="max-width: 580px; margin: 0 auto;">
                         <div class="scanner-box">
                             <h4><i class="fa-solid fa-camera"></i> Live 2D Barcode Scanner</h4>
                             <p style="font-size:0.82rem; color:#94a3b8; margin-top:4px;">Use webcam or plug in a USB 2D handheld scanner</p>
                             
-                            <div id="qr-reader" style="background: #1e293b; min-height: 200px; border-radius: 12px; margin: 14px auto; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                            <div id="qr-reader" style="background: #1e293b; min-height: 250px; border-radius: 12px; margin: 14px auto; display: flex; align-items: center; justify-content: center; overflow: hidden;">
                                 <span style="color: #64748b; font-size: 0.85rem;">Camera feed will appear here</span>
                             </div>
 
-                            <!-- Added instruction text so the user knows it captures automatically -->
                             <p id="scan-instruction" class="hidden" style="color: #38bdf8; font-size: 0.85rem; font-weight: 700; margin-bottom: 10px;">
                                 <i class="fa-solid fa-circle-notch fa-spin"></i> Point camera at QR Code. It captures automatically!
                             </p>
@@ -282,34 +280,50 @@
                                 <button type="button" class="btn btn-brand" onclick="start2DCameraScanner()">
                                     <i class="fa-solid fa-video"></i> Start Camera
                                 </button>
-                                <!-- Fixed invisible text: removed color:#fff and forced dark text for visibility -->
                                 <button type="button" class="btn btn-outline" style="color: #0f172a; font-weight: 800;" onclick="stop2DCameraScanner()">
                                     <i class="fa-solid fa-video-slash"></i> Stop Camera
                                 </button>
                             </div>
 
-                            <div class="form-field" style="margin-top:18px; text-align:left;">
-                                <label style="color:#cbd5e1;">USB 2D Barcode Gun / Raw 2D Payload Input:</label>
-                                <textarea id="raw-2d-payload" rows="3" class="input-control" placeholder="Focus here when using a USB 2D Barcode Gun, or click 'Generate Sample 2D Shipment Barcode' on the right..."></textarea>
-                                <button type="button" class="btn btn-brand" style="margin-top:8px;" onclick="parse2DBarcodePayload()">
+                            <div class="form-field" style="margin-top:24px; text-align:left;">
+                                <label style="color:#cbd5e1;">USB 2D Barcode Gun / Raw Payload Input:</label>
+                                <textarea id="raw-2d-payload" rows="3" class="input-control" placeholder="Focus here when using a USB 2D Barcode Gun..."></textarea>
+                                <button type="button" class="btn btn-brand" style="margin-top:8px; width: 100%;" onclick="parse2DBarcodePayload()">
                                     <i class="fa-solid fa-bolt"></i> Decode 2D Barcode Manifest
                                 </button>
                             </div>
                         </div>
-
-                        <!-- Right: Built-in Sample 2D Shipment Barcode Generator for Demo -->
-                        <div class="qr-generator-card">
-                            <h4><i class="fa-solid fa-boxes-packing"></i> Supplier 2D Manifest Generator (Demo Tool)</h4>
-                            <p style="font-size:0.84rem; color:#64748b; margin-top:6px;">
-                                Generate a real 2D QR Manifest containing a bulk shipment of 6 medicine batches (including 1 expired test batch) to test instant bulk import.
-                            </p>
-                            <div id="generated-qr-container"></div>
-                            <button type="button" class="btn btn-outline" onclick="generateSample2DManifest()">
-                                <i class="fa-solid fa-wand-magic-sparkles"></i> Generate & Load Sample 2D Shipment Barcode
-                            </button>
-                        </div>
                     </div>
                 </div>
+
+                <!-- Decoded 2D Manifest Preview Table -->
+                <div id="decoded-manifest-card" class="panel-card hidden">
+                    <div class="panel-header">
+                        <h2><i class="fa-solid fa-list-check"></i> Decoded 2D Shipment Manifest Preview (<span id="manifest-item-count">0</span> Batches)</h2>
+                        <button type="button" id="btn-commit-bulk" class="btn btn-brand" onclick="commitBulkManifestToSupabase()">
+                            <i class="fa-solid fa-check-double"></i> Confirm & Import Entire Stock to Supabase
+                        </button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Medicine Name</th>
+                                    <th>Batch #</th>
+                                    <th>Category</th>
+                                    <th>Supplier</th>
+                                    <th>Qty</th>
+                                    <th>Unit Cost</th>
+                                    <th>Selling Price</th>
+                                    <th>Expiry Date</th>
+                                    <th>Rack</th>
+                                </tr>
+                            </thead>
+                            <tbody id="manifest-preview-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
 
                 <!-- Decoded 2D Manifest Preview Table -->
                 <div id="decoded-manifest-card" class="panel-card hidden">
