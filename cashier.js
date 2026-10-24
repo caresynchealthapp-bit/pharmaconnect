@@ -247,6 +247,18 @@ function renderPosMedicineGrid() {
 function triggerBarcodeLookup() {
     const input = document.getElementById('pos-barcode-input');
     const code = input.value.trim().toLowerCase();
+
+    const barcodeInput = document.getElementById('pos-barcode-input');
+if (barcodeInput) {
+    barcodeInput.addEventListener('keypress', function(event) {
+        // Barcode guns automatically send an 'Enter' keypress after scanning
+        if (event.key === 'Enter') {
+            event.preventDefault(); 
+            triggerBarcodeLookup();
+        }
+    });
+}
+
     if (!code) return;
 
     // Match against barcode, batch_number, grn_number, or exact/partial medicine name

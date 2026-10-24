@@ -15,7 +15,7 @@
 
     <!-- Supabase SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
+    <link rel="icon" type="image/png" href="/Firefly.png"> 
     <link rel="stylesheet" href="portal.css">
 </head>
 <body>
@@ -82,7 +82,7 @@
                     <i class="fa-solid fa-qrcode"></i> Scan 2D Bulk Barcode
                 </button>
                 <button class="btn btn-brand" onclick="switchGrnTab('manual', document.querySelectorAll('.sidebar-nav .nav-item')[1])">
-                    <i class="fa-solid fa-plus"></i> + New Manual GRN
+                    <i class="fa-solid fa-plus"></i> New Manual GRN
                 </button>
             </div>
         </header>
@@ -174,7 +174,7 @@
             <section id="tab-manual" class="tab-panel">
                 <div class="panel-card">
                     <div class="panel-header">
-                        <h2><i class="fa-solid fa-file-medical"></i> Manual GRN Batch Entry (Synced with `medicines` Table)</h2>
+                        <h2><i class="fa-solid fa-file-medical"></i> Manual GRN Batch Entry</h2>
                     </div>
 
                     <form id="manual-grn-form" autocomplete="off">

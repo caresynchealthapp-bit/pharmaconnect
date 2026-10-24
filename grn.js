@@ -84,7 +84,7 @@ async function refreshGrnData() {
 
     const [stockRes, medRes] = await Promise.all([
         supabaseClient.from('grn_stock').select('*').eq('pharmacy_id', currentPharmacy.id).order('expiry_date', { ascending: true }),
-        supabaseClient.from('medicines').select('*').eq('pharmacy_id', currentPharmacy.id).order('name', { ascending: true })
+        supabaseClient.from('medicines').select('*').order('name', { ascending: true })
     ]);
 
     grnBatches = stockRes.data || [];
