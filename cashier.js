@@ -1,8 +1,8 @@
 /* ============================================================================
-   PHARMACONNECT - POS CASHIER TERMINAL, REALTIME STOCK & RECEIPT ENGINE
+   PHARMACONNECT - POS CASHIER TERMINAL, ONLINE ORDER APPROVAL & RECEIPT ENGINE
    ============================================================================ */
 
-// 1. STRICT SECURITY GATE (Blocks direct URL typing immediately)
+// 1. STRICT SECURITY GATE
 const activeSession = JSON.parse(sessionStorage.getItem('pc_active_session') || 'null');
 const urlParams = new URLSearchParams(window.location.search);
 const pId = urlParams.get('pharmacy_id');
@@ -33,7 +33,12 @@ const PHARMACY_THEMES = [
 // State
 let currentPharmacy = null;
 let availableBatches = [];
+let allGrammar BatchesForLookup = [];
 let todaySalesList = [];
+let onlineOrdersList = [];
+let pendingOnlineOrders = [];
+let currentPendingOrderIndex = 0;
+
 let cart = [];
 let selectedCategory = 'ALL';
 let selectedPaymentMethod = 'Cash';
@@ -49,6 +54,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await loadPharmacyBranding(pId);
     await refreshCashierData();
+    subscribeToIncomingOnlineOrders();
 });
 
 function setupSessionHeader() {
@@ -79,12 +85,10 @@ function generateNewInvoiceNumber() {
 }
 
 function setupPosShortcutsAndEvents() {
-    // Live Search Input
     document.getElementById('pos-medicine-search').addEventListener('input', () => {
         renderPosMedicineGrid();
     });
 
-    // Barcode / Batch Input Enter Key Listener
     document.getElementById('pos-barcode-input').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
@@ -92,7 +96,6 @@ function setupPosShortcutsAndEvents() {
         }
     });
 
-    // Keyboard Shortcuts: F2 for Search, F4 for Barcode Gun
     document.addEventListener('keydown', (e) => {
         if (e.key === 'F2') {
             e.preventDefault();
@@ -135,35 +138,69 @@ async function loadPharmacyBranding(pharmacyId) {
     root.style.setProperty('--sidebar-bg', theme.sidebar);
 }
 
-// ==================== FETCH LIVE STOCK & TODAY'S BUSINESS LOG ====================
-async function refreshCashierData() {
+// ==================== REALTIME LISTENER FOR INCOMING MEDIRADAR ORDERS ====================
+function subscribeToIncomingOnlineOrders() {
+    if (!currentPharmacy) return;
+
+    supabaseClient
+        .channel(`cashier-orders-${currentPharmacy.id}`)
+        .on(
+            'postgres_changes',
+            {
+                event: '*',
+                schema: 'public',
+                table: 'customer_orders',
+                filter: `pharmacy_id=eq.${currentPharmacy.id}`
+            },
+            async (payload) => {
+                if (payload.eventType === 'INSERT') {
+                    showToast(`New MediRadar Online Order (${payload.new.invoice_no || 'New'}) received!`);
+                }
+                await refreshCashierData();
+            }
+        )
+        .subscribe();
+
+    // Poll every 6 seconds as backup so Cashier never misses an uploaded slip
+    setInterval(() => {
+        if (currentPharmacy) refreshCashierData(true);
+    }, 6000);
+}
+
+// ==================== FETCH LIVE STOCK, ONLINE ORDERS & TODAY'S BUSINESS LOG ====================
+async function refreshCashierData(silent = false) {
     if (!currentPharmacy) return;
 
     const todayStr = new Date().toISOString().split('T')[0];
 
-    const [stockRes, salesRes] = await Promise.all([
+    const [stockRes, salesRes, ordersRes] = await Promise.all([
         supabaseClient
             .from('grn_stock')
             .select('*')
             .eq('pharmacy_id', currentPharmacy.id)
-            .gt('current_quantity', 0)
-            .gt('expiry_date', todayStr) // Automatically exclude expired stock from POS!
-            .order('expiry_date', { ascending: true }), // FEFO: First Expiry First Out
+            .order('expiry_date', { ascending: true }),
         supabaseClient
             .from('sales_transactions')
             .select('*')
             .eq('pharmacy_id', currentPharmacy.id)
-            .order('sold_at', { ascending: false })
+            .order('sold_at', { ascending: false }),
+        supabaseClient
+            .from('customer_orders')
+            .select('*, customer_order_items(*)')
+            .eq('pharmacy_id', currentPharmacy.id)
+            .order('created_at', { ascending: true }) // FIFO queue so earliest customer upload is reviewed first
     ]);
 
-    availableBatches = stockRes.data || [];
+    const allStock = stockRes.data || [];
+    allGrammarBatchesForLookup = allStock;
+    availableBatches = allStock.filter((b) => b.current_quantity > 0 && b.expiry_date > todayStr);
 
-    // Filter sales made Today (local date match)
+    // Filter sales made Today (local date match + trailing 24h fallback)
     const allSales = salesRes.data || [];
+    const now = new Date();
     todaySalesList = allSales.filter((s) => {
         if (!s.sold_at) return false;
         const saleDate = new Date(s.sold_at);
-        const now = new Date();
         return (
             saleDate.getFullYear() === now.getFullYear() &&
             saleDate.getMonth() === now.getMonth() &&
@@ -171,10 +208,295 @@ async function refreshCashierData() {
         );
     });
 
-    renderPosMedicineGrid();
-    renderCart();
+    onlineOrdersList = (ordersRes.data || []).slice().reverse(); // Newest first for history table
+    pendingOnlineOrders = (ordersRes.data || []).filter(
+        (o) => (o.cashier_approval_status || 'Pending') === 'Pending'
+    );
+
+    if (currentPendingOrderIndex >= pendingOnlineOrders.length) {
+        currentPendingOrderIndex = Math.max(0, pendingOnlineOrders.length - 1);
+    }
+
+    const pendingBadge = document.getElementById('sidebar-online-pending-count');
+    if (pendingBadge) {
+        pendingBadge.textContent = pendingOnlineOrders.length;
+    }
+
+    if (!silent) {
+        renderPosMedicineGrid();
+        renderCart();
+        renderShelfLookupTable();
+    }
     renderTodayBusinessLog();
-    renderShelfLookupTable();
+    renderOnlineOrdersReviewerAndTable();
+}
+
+// ==================== ONE-BY-ONE ONLINE ORDER & BANK SLIP REVIEWER ====================
+function stepPendingOrder(delta) {
+    if (pendingOnlineOrders.length === 0) return;
+    currentPendingOrderIndex = (currentPendingOrderIndex + delta + pendingOnlineOrders.length) % pendingOnlineOrders.length;
+    renderOnlineOrdersReviewerAndTable();
+}
+
+function inspectSpecificOrderInQueue(orderId) {
+    const idx = pendingOnlineOrders.findIndex((o) => String(o.id) === String(orderId));
+    if (idx > -1) {
+        currentPendingOrderIndex = idx;
+        renderOnlineOrdersReviewerAndTable();
+        document.getElementById('one-by-one-reviewer-box').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+}
+
+function renderOnlineOrdersReviewerAndTable() {
+    const reviewerBox = document.getElementById('one-by-one-reviewer-box');
+    const indicator = document.getElementById('queue-position-indicator');
+    const tbody = document.getElementById('all-online-orders-tbody');
+
+    if (pendingOnlineOrders.length === 0) {
+        indicator.textContent = '0 Pending in Queue';
+        reviewerBox.innerHTML = `
+            <div style="text-align:center; padding:32px 20px; background:#f8fafc; border-radius:14px; border:1px dashed #cbd5e1; color:#15803d;">
+                <i class="fa-solid fa-circle-check" style="font-size:2rem; margin-bottom:8px;"></i>
+                <h4 style="margin:0; font-size:1rem;">All Caught Up! Zero Pending Bank Transfers in Queue</h4>
+                <p style="font-size:0.84rem; color:#64748b; margin-top:4px;">When a customer uploads a bank receipt on MediRadar, it will appear here immediately for one-by-one verification.</p>
+            </div>
+        `;
+    } else {
+        const order = pendingOnlineOrders[currentPendingOrderIndex];
+        indicator.textContent = `Reviewing Order ${currentPendingOrderIndex + 1} of ${pendingOnlineOrders.length}`;
+
+        const items = order.customer_order_items || [];
+        const itemsListHtml = items.map((item) => `
+            <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #e2e8f0; font-size:0.88rem;">
+                <span><strong>${item.quantity}x</strong> ${escapeHtml(item.medicine_name || 'Medicine')}</span>
+                <strong>LKR ${formatCurrency(Number(item.quantity) * Number(item.unit_price))}</strong>
+            </div>
+        `).join('');
+
+        const receiptPreviewHtml = order.receipt_image_url
+            ? `
+                <div style="text-align:center;">
+                    <a href="${escapeHtml(order.receipt_image_url)}" target="_blank" title="Click to open full-size receipt in new tab">
+                        <img src="${escapeHtml(order.receipt_image_url)}" alt="Bank Transfer Receipt"
+                             style="max-height:280px; width:auto; max-width:100%; border-radius:12px; border:2px solid #cbd5e1; object-fit:contain; margin:0 auto; display:block;">
+                    </a>
+                    <a href="${escapeHtml(order.receipt_image_url)}" target="_blank" style="display:inline-block; margin-top:8px; font-size:0.8rem; font-weight:700; color:var(--brand-primary);">
+                        <i class="fa-solid fa-magnifying-glass-plus"></i> Open Full-Size Receipt Image
+                    </a>
+                </div>
+            `
+            : `<div style="padding:40px; text-align:center; background:#f1f5f9; border-radius:12px; color:#64748b;">No receipt image attached (${escapeHtml(order.payment_method)})</div>`;
+
+        reviewerBox.innerHTML = `
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:20px; background:#f8fafc; padding:20px; border-radius:16px; border:1px solid #e2e8f0;">
+                
+                <!-- Left: Order & Customer Details -->
+                <div style="display:flex; flex-direction:column; justify-content:space-between; gap:14px;">
+                    <div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                            <span class="badge badge-warning" style="font-size:0.8rem;">Awaiting Verification</span>
+                            <code style="font-size:0.95rem; font-weight:800;">${escapeHtml(order.invoice_no || order.id.slice(0, 8))}</code>
+                        </div>
+
+                        <h3 style="margin:0 0 4px 0; font-size:1.15rem;">Customer: ${escapeHtml(order.customer_name || 'MediRadar Customer')}</h3>
+                        <p style="margin:0; font-size:0.85rem; color:#475569;">
+                            <i class="fa-solid fa-phone"></i> ${escapeHtml(order.customer_phone || '-')} &nbsp;|&nbsp;
+                            <i class="fa-solid fa-location-dot"></i> ${escapeHtml(order.delivery_address || '-')}
+                        </p>
+
+                        <div style="margin-top:12px; padding:12px; background:#fff; border-radius:12px; border:1px solid #e2e8f0;">
+                            <div style="font-size:0.76rem; text-transform:uppercase; font-weight:800; color:#64748b; margin-bottom:4px;">Bank Transfer Details Submitted</div>
+                            <div style="font-size:0.88rem;"><strong>Sending Bank:</strong> ${escapeHtml(order.sending_bank || 'Bank Transfer')}</div>
+                            <div style="font-size:0.88rem;"><strong>Transfer Ref / Slip #:</strong> <code style="color:#0f766e; font-weight:800;">${escapeHtml(order.bank_reference || 'N/A')}</code></div>
+                        </div>
+
+                        <div style="margin-top:12px; padding:12px; background:#fff; border-radius:12px; border:1px solid #e2e8f0;">
+                            <div style="font-size:0.76rem; text-transform:uppercase; font-weight:800; color:#64748b; margin-bottom:6px;">Ordered Medicines</div>
+                            ${itemsListHtml || '<div>1x Medicine</div>'}
+                            <div style="display:flex; justify-content:space-between; padding-top:8px; margin-top:6px; font-size:1.05rem; font-weight:800; color:var(--brand-primary);">
+                                <span>Total Transfer Amount:</span>
+                                <span>LKR ${formatCurrency(order.total_amount)}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Accept / Reject Controls -->
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <input type="text" id="reject-reason-input" class="input-control" placeholder="Optional rejection reason (if rejecting slip)...">
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <button type="button" id="btn-accept-order" class="btn btn-brand" style="flex:1;" onclick="handleCashierOrderDecision('${order.id}', 'Accepted')">
+                                <i class="fa-solid fa-circle-check"></i> Accept Payment & Dispense Stock
+                            </button>
+                            <button type="button" id="btn-reject-order" class="btn btn-outline" style="color:var(--danger); border-color:var(--danger);" onclick="handleCashierOrderDecision('${order.id}', 'Rejected')">
+                                <i class="fa-solid fa-circle-xmark"></i> Reject Slip
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Uploaded Bank Slip Preview -->
+                <div style="display:flex; flex-direction:column; justify-content:center; background:#fff; padding:16px; border-radius:12px; border:1px solid #e2e8f0;">
+                    <div style="font-size:0.78rem; font-weight:800; text-transform:uppercase; color:#64748b; margin-bottom:10px; text-align:center;">
+                        <i class="fa-solid fa-file-invoice"></i> Customer Uploaded Bank Receipt Screenshot
+                    </div>
+                    ${receiptPreviewHtml}
+                </div>
+
+            </div>
+        `;
+    }
+
+    // Populate All Online Orders Table
+    tbody.innerHTML = '';
+    if (onlineOrdersList.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#64748b;">No MediRadar online orders received for this pharmacy yet.</td></tr>`;
+        return;
+    }
+
+    onlineOrdersList.forEach((o) => {
+        const dt = o.created_at ? new Date(o.created_at).toLocaleString() : '-';
+        const items = o.customer_order_items || [];
+        const itemsSummary = items.map((i) => `${escapeHtml(i.medicine_name || 'Medicine')} (x${i.quantity})`).join(', ');
+        const status = o.cashier_approval_status || 'Pending';
+
+        let statusHtml = '';
+        if (status === 'Accepted') {
+            statusHtml = `<span class="badge badge-success"><i class="fa-solid fa-check"></i> Accepted (${escapeHtml(o.reviewed_by || 'POS')})</span>`;
+        } else if (status === 'Rejected') {
+            statusHtml = `<span class="badge badge-danger"><i class="fa-solid fa-xmark"></i> Rejected</span>`;
+        } else {
+            statusHtml = `
+                <button type="button" class="btn btn-brand" style="padding:5px 10px; font-size:0.76rem;" onclick="inspectSpecificOrderInQueue('${o.id}')">
+                    <i class="fa-solid fa-eye"></i> Review in Queue
+                </button>
+            `;
+        }
+
+        const slipLink = o.receipt_image_url
+            ? `<a href="${escapeHtml(o.receipt_image_url)}" target="_blank" style="color:var(--brand-primary); font-weight:700; font-size:0.78rem; display:block;"><i class="fa-solid fa-image"></i> View Slip</a>`
+            : '';
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><small>${escapeHtml(dt)}</small></td>
+            <td><code>${escapeHtml(o.invoice_no || o.id.slice(0, 8))}</code></td>
+            <td>
+                <strong>${escapeHtml(o.customer_name || 'Customer')}</strong>
+                <small style="display:block; color:#64748b;">${escapeHtml(o.customer_phone || '')} • ${escapeHtml(o.delivery_address || '')}</small>
+            </td>
+            <td>${itemsSummary || 'Online Medicine Order'}</td>
+            <td>
+                <strong>${escapeHtml(o.payment_method)}</strong>
+                <small style="display:block; color:#64748b;">${escapeHtml(o.bank_reference || '')}</small>
+                ${slipLink}
+            </td>
+            <td><strong>LKR ${formatCurrency(o.total_amount)}</strong></td>
+            <td>${statusHtml}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function handleCashierOrderDecision(orderId, decision) {
+    const order = onlineOrdersList.find((o) => String(o.id) === String(orderId));
+    if (!order) return;
+
+    const reasonInput = document.getElementById('reject-reason-input');
+    const rejectionReason = reasonInput ? reasonInput.value.trim() : '';
+
+    if (decision === 'Rejected' && !rejectionReason) {
+        showToast('Please enter a brief rejection reason so the customer is informed.', 'error');
+        if (reasonInput) reasonInput.focus();
+        return;
+    }
+
+    const cashierUser = activeSession.username || activeSession.staff_name || 'cashier';
+    const nowIso = new Date().toISOString();
+
+    try {
+        if (decision === 'Accepted') {
+            const items = order.customer_order_items || [];
+
+            // 1. Deduct each item from `grn_stock` and insert into `sales_transactions`
+            for (const item of items) {
+                const qty = Number(item.quantity || 1);
+                const unitPrice = Number(item.unit_price || 0);
+
+                // Find matching batch by grn_stock_id or medicine_name
+                let batch = allGrammarBatchesForLookup.find((b) => String(b.id) === String(item.grn_stock_id));
+                if (!batch && item.medicine_name) {
+                    batch = allGrammarBatchesForLookup.find(
+                        (b) => (b.medicine_name || '').toLowerCase() === item.medicine_name.toLowerCase() && b.current_quantity > 0
+                    );
+                }
+
+                const unitCost = batch ? Number(batch.unit_cost || unitPrice * 0.72) : unitPrice * 0.72;
+                const medName = item.medicine_name || (batch ? batch.medicine_name : 'Online Medicine');
+
+                if (batch) {
+                    const newQty = Math.max(0, Number(batch.current_quantity) - qty);
+                    await supabaseClient
+                        .from('grn_stock')
+                        .update({ current_quantity: newQty })
+                        .eq('id', batch.id);
+                }
+
+                await supabaseClient
+                    .from('sales_transactions')
+                    .insert([{
+                        pharmacy_id: currentPharmacy.id,
+                        invoice_no: order.invoice_no || `MR-${order.id.slice(0, 6).toUpperCase()}`,
+                        counter_name: `MediRadar Online (Bank TX)`,
+                        cashier_username: `${order.customer_name || 'Customer'} (Verified by ${cashierUser})`,
+                        medicine_name: medName,
+                        quantity_sold: qty,
+                        unit_cost: unitCost,
+                        unit_price: unitPrice,
+                        total_amount: Number((qty * unitPrice).toFixed(2)),
+                        profit_amount: Number((qty * (unitPrice - unitCost)).toFixed(2)),
+                        sold_at: nowIso
+                    }]);
+            }
+
+            // 2. Mark order as Accepted & Paid in `customer_orders` (Triggers live notification on MediRadar!)
+            const { error: updErr } = await supabaseClient
+                .from('customer_orders')
+                .update({
+                    cashier_approval_status: 'Accepted',
+                    payment_status: 'Paid',
+                    order_status: 'Ready for Pickup',
+                    reviewed_by: cashierUser,
+                    reviewed_at: nowIso
+                })
+                .eq('id', order.id);
+
+            if (updErr) throw updErr;
+
+            showToast(`Order ${order.invoice_no || ''} Accepted! Stock deducted & customer notified on MediRadar.`);
+        } else {
+            // Rejected
+            const { error: rejErr } = await supabaseClient
+                .from('customer_orders')
+                .update({
+                    cashier_approval_status: 'Rejected',
+                    payment_status: 'Failed',
+                    order_status: 'Cancelled',
+                    rejection_reason: rejectionReason,
+                    reviewed_by: cashierUser,
+                    reviewed_at: nowIso
+                })
+                .eq('id', order.id);
+
+            if (rejErr) throw rejErr;
+
+            showToast(`Order ${order.invoice_no || ''} Rejected. Customer has been notified.`, 'error');
+        }
+
+        await refreshCashierData();
+    } catch (err) {
+        console.error('Order review error:', err);
+        showToast(err.message || 'Failed to update order status.', 'error');
+    }
 }
 
 // ==================== RENDER POS MEDICINE BATCH CARDS ====================
@@ -191,7 +513,7 @@ function renderPosMedicineGrid() {
     grid.innerHTML = '';
 
     const filtered = availableBatches.filter((b) => {
-        const matchesCat = selectedCategory === 'ALL' || (b.category || '').toLowerCase() === selectedCategory.toLowerCase();
+        const matchesCat = selectedCategory === 'ALL' || (b.category || '').toLowerCase().includes(selectedCategory.toLowerCase());
         const matchesQuery =
             (b.medicine_name || '').toLowerCase().includes(query) ||
             (b.batch_number || '').toLowerCase().includes(query) ||
@@ -247,21 +569,8 @@ function renderPosMedicineGrid() {
 function triggerBarcodeLookup() {
     const input = document.getElementById('pos-barcode-input');
     const code = input.value.trim().toLowerCase();
-
-    const barcodeInput = document.getElementById('pos-barcode-input');
-if (barcodeInput) {
-    barcodeInput.addEventListener('keypress', function(event) {
-        // Barcode guns automatically send an 'Enter' keypress after scanning
-        if (event.key === 'Enter') {
-            event.preventDefault(); 
-            triggerBarcodeLookup();
-        }
-    });
-}
-
     if (!code) return;
 
-    // Match against barcode, batch_number, grn_number, or exact/partial medicine name
     const matchedBatch = availableBatches.find(
         (b) =>
             (b.barcode && b.barcode.toLowerCase() === code) ||
@@ -442,14 +751,14 @@ function calculateChangeBalance() {
     }
 }
 
-// ==================== FINALIZE SALE (REALTIME DB UPDATE + PRINT RECEIPT) ====================
+// ==================== FINALIZE SALE ====================
 async function finalizeSaleAndPrint() {
     if (cart.length === 0) {
         showToast('Please add at least one medicine to the bill before checkout!', 'error');
         return;
     }
 
-    const { totalUnits, subtotal, discPct, discountAmt, grandTotal } = recalculateCartTotals();
+    const { subtotal, discPct, discountAmt, grandTotal } = recalculateCartTotals();
     const cashReceived = parseFloat(document.getElementById('cash-received-input').value) || grandTotal;
 
     if (selectedPaymentMethod === 'Cash' && cashReceived < grandTotal) {
@@ -470,7 +779,6 @@ async function finalizeSaleAndPrint() {
     const discountMultiplier = 1 - discPct / 100;
 
     try {
-        // 1. Deduct stock from `public.grn_stock` for each batch in the cart
         for (const item of cart) {
             const newQty = Math.max(0, Number(item.batch.current_quantity) - item.qty);
             const { error: stockErr } = await supabaseClient
@@ -482,7 +790,6 @@ async function finalizeSaleAndPrint() {
             if (stockErr) throw stockErr;
         }
 
-        // 2. Insert sales rows into `public.sales_transactions` (Feeds Admin Graphs & Counter Filter)
         const salesRowsToInsert = cart.map((item) => {
             const rawLineTotal = item.qty * Number(item.batch.selling_price);
             const netLineTotal = rawLineTotal * discountMultiplier;
@@ -510,7 +817,6 @@ async function finalizeSaleAndPrint() {
 
         if (saleErr) throw saleErr;
 
-        // 3. Prepare Receipt Data & Open Full-Option Print Modal
         lastCompletedReceiptData = {
             invoice_no: currentInvoiceNumber,
             sold_at: saleTimestamp,
@@ -538,7 +844,6 @@ async function finalizeSaleAndPrint() {
         showToast(`Sale ${currentInvoiceNumber} completed! Stock & Admin graphs updated.`);
         openReceiptModal(lastCompletedReceiptData);
 
-        // Clear cart & reload fresh stock and Today's Business Log
         clearCart();
         await refreshCashierData();
 
@@ -551,16 +856,22 @@ async function finalizeSaleAndPrint() {
     }
 }
 
-// ==================== TODAY'S BUSINESS LOG TAB ====================
+// ==================== TODAY'S BUSINESS LOG TAB (POS + MEDIRADAR ONLINE) ====================
+function isOnlineRow(row) {
+    const c = (row.counter_name || '').toLowerCase();
+    return c.includes('mediradar') || c.includes('web') || c.includes('online');
+}
+
 function renderTodayBusinessLog() {
     const filterMode = document.getElementById('daylog-counter-filter').value;
     const myCounter = activeSession.counter_name || 'Counter 01';
 
-    const filteredRows = filterMode === 'MY_COUNTER'
-        ? todaySalesList.filter((s) => s.counter_name === myCounter)
-        : todaySalesList;
+    const filteredRows = todaySalesList.filter((s) => {
+        if (filterMode === 'MY_COUNTER') return s.counter_name === myCounter;
+        if (filterMode === 'MEDIRADAR_ONLY') return isOnlineRow(s);
+        return true; // ALL_COUNTERS
+    });
 
-    // Group individual medicine rows by `invoice_no` so bills appear cleanly
     const invoiceGroups = {};
     filteredRows.forEach((row) => {
         const inv = row.invoice_no || 'INV-UNKNOWN';
@@ -591,7 +902,6 @@ function renderTodayBusinessLog() {
 
     const invoicesArray = Object.values(invoiceGroups);
 
-    // Update Topbar & Today's Log KPIs
     const totalRev = filteredRows.reduce((s, r) => s + Number(r.total_amount || 0), 0);
     const totalUnits = filteredRows.reduce((s, r) => s + Number(r.quantity_sold || 0), 0);
     const totalProfit = filteredRows.reduce((s, r) => s + Number(r.profit_amount || 0), 0);
@@ -608,20 +918,21 @@ function renderTodayBusinessLog() {
     tbody.innerHTML = '';
 
     if (invoicesArray.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#64748b;">No sales recorded for today yet. Complete an order in the POS Terminal to see it logged here.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#64748b;">No sales recorded for today yet. Complete an order in the POS Terminal or accept a MediRadar online order to see it logged here.</td></tr>`;
         return;
     }
 
     invoicesArray.forEach((inv) => {
         const timeStr = new Date(inv.sold_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
         const itemSummary = inv.items.map((i) => `${escapeHtml(i.medicine_name)} (x${i.qty})`).join(', ');
+        const isWeb = isOnlineRow(inv);
 
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><strong>${timeStr}</strong></td>
             <td><code>${escapeHtml(inv.invoice_no)}</code></td>
             <td>
-                <span class="badge badge-info">${escapeHtml(inv.counter_name)}</span>
+                <span class="badge ${isWeb ? 'badge-success' : 'badge-info'}">${escapeHtml(inv.counter_name)}</span>
                 <small style="display:block; color:#64748b; margin-top:2px;">${escapeHtml(inv.cashier_username)}</small>
             </td>
             <td style="max-width:300px;">${itemSummary}</td>
@@ -647,7 +958,7 @@ function reprintPastInvoice(invoiceGroup) {
         sold_at: invoiceGroup.sold_at,
         counter_name: invoiceGroup.counter_name,
         cashier_username: invoiceGroup.cashier_username,
-        customer_name: 'Walk-in Customer (Reprint)',
+        customer_name: invoiceGroup.cashier_username || 'Customer (Reprint)',
         customer_phone: '-',
         payment_method: 'Paid',
         subtotal: rawSubtotal,

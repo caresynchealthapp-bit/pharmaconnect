@@ -43,6 +43,10 @@
             <button class="nav-item active" onclick="switchCashierTab('pos', this)">
                 <span class="nav-item-left"><i class="fa-solid fa-cart-shopping"></i> POS Billing Terminal</span>
             </button>
+            <button class="nav-item" id="nav-online-orders-btn" onclick="switchCashierTab('onlineorders', this)">
+                <span class="nav-item-left"><i class="fa-solid fa-globe"></i> Online Orders (MediRadar)</span>
+                <span id="sidebar-online-pending-count" class="badge badge-warning" style="font-size:0.72rem;">0</span>
+            </button>
             <button class="nav-item" onclick="switchCashierTab('daylog', this)">
                 <span class="nav-item-left"><i class="fa-solid fa-clock-rotate-left"></i> Today's Business Log</span>
                 <span id="sidebar-today-count" class="badge badge-info" style="font-size:0.72rem;">0</span>
@@ -79,11 +83,11 @@
 
             <div class="topbar-actions">
                 <div class="shift-mini-stat">
-                    <span>Today's Counter Sales:</span>
+                    <span>Today's Pharmacy Sales:</span>
                     <strong id="topbar-today-total">LKR 0.00</strong>
                 </div>
                 <button class="btn btn-outline" onclick="refreshCashierData()">
-                    <i class="fa-solid fa-arrows-rotate"></i> Sync Stock
+                    <i class="fa-solid fa-arrows-rotate"></i> Sync Stock & Orders
                 </button>
             </div>
         </header>
@@ -96,7 +100,6 @@
 
                     <!-- LEFT COLUMN: SEARCH, BARCODE INPUT & MEDICINE CATALOG -->
                     <div class="pos-catalog-column">
-                        <!-- Dual Search & Barcode Scanner Bar -->
                         <div class="pos-search-bar-card">
                             <div class="pos-input-group">
                                 <label for="pos-medicine-search">
@@ -141,7 +144,7 @@
                             <button class="cat-pill" onclick="filterByCategory('Ointment', this)">Ointments</button>
                         </div>
 
-                        <!-- Available Stock Cards Grid (Sorted by FEFO) -->
+                        <!-- Available Stock Cards Grid -->
                         <div id="pos-medicine-grid" class="pos-medicine-grid"></div>
                     </div>
 
@@ -158,16 +161,13 @@
                                 </button>
                             </div>
 
-                            <!-- Optional Customer Info -->
                             <div class="cart-customer-box">
                                 <input type="text" id="cust-name" placeholder="Customer Name (Walk-in Customer)">
                                 <input type="tel" id="cust-phone" placeholder="Phone / Rx Ref (Optional)">
                             </div>
 
-                            <!-- Cart Items List -->
                             <div id="pos-cart-items" class="cart-items-container"></div>
 
-                            <!-- Bill Summary & Discounts -->
                             <div class="cart-summary-section">
                                 <div class="summary-row">
                                     <span>Subtotal (<span id="cart-total-items">0</span> units)</span>
@@ -197,7 +197,6 @@
                                     <h2 id="cart-grand-total">LKR 0.00</h2>
                                 </div>
 
-                                <!-- Payment Method Selector -->
                                 <div class="payment-method-selector">
                                     <button type="button" class="pay-method-btn active" onclick="selectPaymentMethod('Cash', this)">
                                         <i class="fa-solid fa-money-bill-wave"></i> Cash
@@ -210,7 +209,6 @@
                                     </button>
                                 </div>
 
-                                <!-- Cash Tendered & Change Calculator -->
                                 <div id="cash-tender-box" class="cash-tender-box">
                                     <div class="tender-input-row">
                                         <label for="cash-received-input">Cash Received (LKR)</label>
@@ -244,14 +242,70 @@
                 </div>
             </section>
 
-            <!-- ==================== TAB 2: TODAY'S BUSINESS LOG ==================== -->
+            <!-- ==================== TAB 2: ONLINE ORDERS & BANK RECEIPT REVIEWER ==================== -->
+            <section id="tab-onlineorders" class="tab-panel">
+                <!-- One-by-One Bank Transfer Queue Inspector -->
+                <div class="panel-card" style="border: 2px solid var(--brand-primary);">
+                    <div class="panel-header" style="flex-wrap:wrap; gap:12px;">
+                        <div>
+                            <h2><i class="fa-solid fa-money-check-dollar" style="color:var(--brand-primary);"></i> Step-by-Step Bank Receipt Verification Queue</h2>
+                            <p style="font-size:0.85rem; color:#64748b;">
+                                Review incoming MediRadar bank transfer receipts one by one. Accepting an order automatically deducts GRN stock, logs the sale in Today's Business Log & Admin Analytics, and notifies the customer live.
+                            </p>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <button type="button" class="btn btn-outline" onclick="stepPendingOrder(-1)">
+                                <i class="fa-solid fa-chevron-left"></i> Previous
+                            </button>
+                            <span id="queue-position-indicator" class="badge badge-info" style="font-size:0.85rem; padding:8px 14px;">
+                                0 Pending
+                            </span>
+                            <button type="button" class="btn btn-outline" onclick="stepPendingOrder(1)">
+                                Next <i class="fa-solid fa-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="one-by-one-reviewer-box" style="margin-top: 12px;">
+                        <!-- Populated dynamically via cashier.js -->
+                    </div>
+                </div>
+
+                <!-- Complete Online Orders History Table -->
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h2><i class="fa-solid fa-globe"></i> All MediRadar Online Orders for This Pharmacy</h2>
+                        <button type="button" class="btn btn-outline" onclick="refreshCashierData()">
+                            <i class="fa-solid fa-rotate"></i> Refresh Queue
+                        </button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Date / Time</th>
+                                    <th>Invoice #</th>
+                                    <th>Customer & Address</th>
+                                    <th>Ordered Medicines</th>
+                                    <th>Payment & Slip</th>
+                                    <th>Total (LKR)</th>
+                                    <th>Status / Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="all-online-orders-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== TAB 3: TODAY'S BUSINESS LOG ==================== -->
             <section id="tab-daylog" class="tab-panel">
                 <div class="kpi-grid">
                     <div class="kpi-card">
                         <div class="kpi-info">
                             <span>Today's Total Revenue</span>
                             <h3 id="log-kpi-revenue">LKR 0.00</h3>
-                            <small id="log-kpi-date">Today's Shift</small>
+                            <small id="log-kpi-date">POS + MediRadar Online</small>
                         </div>
                         <div class="kpi-icon"><i class="fa-solid fa-sack-dollar"></i></div>
                     </div>
@@ -288,12 +342,13 @@
                     <div class="panel-header">
                         <div>
                             <h2><i class="fa-solid fa-clipboard-list"></i> Today's Business Transaction Log</h2>
-                            <p style="font-size:0.84rem; color:#64748b;">Every sale below is synced live with the Admin financial dashboard.</p>
+                            <p style="font-size:0.84rem; color:#64748b;">Includes both walk-in POS counter bills and accepted MediRadar online orders.</p>
                         </div>
                         <div style="display:flex; gap:12px; align-items:center;">
                             <select id="daylog-counter-filter" class="select-control" onchange="renderTodayBusinessLog()">
+                                <option value="ALL_COUNTERS" selected>All Pharmacy Counters (POS + MediRadar Online)</option>
                                 <option value="MY_COUNTER">My Counter Only</option>
-                                <option value="ALL_COUNTERS">All Pharmacy Counters</option>
+                                <option value="MEDIRADAR_ONLY">MediRadar Online Orders Only</option>
                             </select>
                         </div>
                     </div>
@@ -304,7 +359,7 @@
                                 <tr>
                                     <th>Time</th>
                                     <th>Invoice #</th>
-                                    <th>Counter & Cashier</th>
+                                    <th>Counter / Channel & Customer</th>
                                     <th>Items Dispensed</th>
                                     <th>Total Units</th>
                                     <th>Total Bill (LKR)</th>
@@ -317,7 +372,7 @@
                 </div>
             </section>
 
-            <!-- ==================== TAB 3: SHELF & STOCK LOOKUP ==================== -->
+            <!-- ==================== TAB 4: SHELF & STOCK LOOKUP ==================== -->
             <section id="tab-stocklookup" class="tab-panel">
                 <div class="panel-card">
                     <div class="panel-header">
@@ -351,7 +406,6 @@
     <div id="receipt-modal" class="receipt-modal-backdrop hidden">
         <div class="receipt-modal-container">
 
-            <!-- Left Side: Full Print Customization Options (Hidden when actually printing) -->
             <div class="receipt-options-sidebar no-print">
                 <div class="options-header">
                     <h3><i class="fa-solid fa-sliders"></i> Print Bill Options</h3>
@@ -404,11 +458,8 @@
                 </div>
             </div>
 
-            <!-- Right Side: Live Printable Receipt Preview -->
             <div class="receipt-preview-stage">
-                <div id="printable-receipt-paper" class="receipt-paper thermal-80mm">
-                    <!-- Populated dynamically via cashier.js -->
-                </div>
+                <div id="printable-receipt-paper" class="receipt-paper thermal-80mm"></div>
             </div>
 
         </div>

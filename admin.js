@@ -1,5 +1,6 @@
 /* ============================================================================
    PHARMACONNECT - DYNAMIC MULTI-TENANT ADMIN CONTROLLER
+   (Includes Multi-Bank Management & MediRadar Online Deals Financial Overview)
    ============================================================================ */
 
 // 1. STRICT SECURITY GATE
@@ -15,10 +16,6 @@ if (!activeSession || !pId || String(activeSession.pharmacy_id) !== String(pId) 
 // 2. SUPABASE CONFIGURATION
 const SUPABASE_URL = 'https://juobkaftyrzlxbviudpy.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_qdME8AYk9rz5B4FHs4Eb1g_0vvhN73v';
-
-if (SUPABASE_URL.includes('YOUR_SUPABASE')) {
-    console.error("DEVELOPER WARNING: Supabase keys are missing in admin.js!");
-}
 
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -71,6 +68,8 @@ let staffRecords = [];
 let grnBatches = [];
 let salesRecords = [];
 let medicineCatalog = [];
+let pharmacyBanksList = [];
+let mediRadarOrders = [];
 
 let cashflowChartInstance = null;
 let topMedicinesChartInstance = null;
@@ -81,6 +80,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         await loadTenantPharmacyDetails(pId);
         setupAdminListeners();
         await refreshAllAdminData();
+        subscribeToAdminRealtime();
     } catch (err) {
         showToast('Error loading dashboard data. Check console.', 'error');
     }
@@ -136,31 +136,202 @@ function applyPharmacyTheme(themeIndex) {
 function setupAdminListeners() {
     document.getElementById('create-staff-form').addEventListener('submit', handleCreateStaff);
     document.getElementById('add-medicine-catalog-form').addEventListener('submit', handleAddCatalogMedicine);
+    document.getElementById('bank-account-form').addEventListener('submit', handleSaveBankAccount);
+}
+
+function subscribeToAdminRealtime() {
+    if (!currentPharmacy) return;
+    supabaseClient
+        .channel(`admin-live-${currentPharmacy.id}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_transactions', filter: `pharmacy_id=eq.${currentPharmacy.id}` }, () => refreshAllAdminData())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'customer_orders', filter: `pharmacy_id=eq.${currentPharmacy.id}` }, () => refreshAllAdminData())
+        .subscribe();
 }
 
 // ==================== LOAD ALL PHARMACY-ISOLATED DATA ====================
 async function refreshAllAdminData() {
     if (!currentPharmacy) return;
 
-    const [staffRes, grnRes, salesRes, medRes] = await Promise.all([
+    const [staffRes, grnRes, salesRes, medRes, banksRes, ordersRes] = await Promise.all([
         supabaseClient.from('pharmacy_staff').select('*').eq('pharmacy_id', currentPharmacy.id).order('created_at', { ascending: false }),
         supabaseClient.from('grn_stock').select('*').eq('pharmacy_id', currentPharmacy.id).order('created_at', { ascending: false }),
         supabaseClient.from('sales_transactions').select('*').eq('pharmacy_id', currentPharmacy.id).order('sold_at', { ascending: false }),
-        supabaseClient.from('medicines').select('*').eq('pharmacy_id', currentPharmacy.id).order('name', { ascending: true })
+        supabaseClient.from('medicines').select('*').eq('pharmacy_id', currentPharmacy.id).order('name', { ascending: true }),
+        supabaseClient.from('pharmacy_banks').select('*').eq('pharmacy_id', currentPharmacy.id).order('created_at', { ascending: true }),
+        supabaseClient.from('customer_orders').select('*, customer_order_items(*)').eq('pharmacy_id', currentPharmacy.id).order('created_at', { ascending: false })
     ]);
 
     staffRecords = staffRes.data || [];
     grnBatches = grnRes.data || [];
     salesRecords = salesRes.data || [];
     medicineCatalog = medRes.data || [];
+    pharmacyBanksList = banksRes.data || [];
+    mediRadarOrders = ordersRes.data || [];
+
+    // If pharmacy has legacy bank columns in `pharmacies` but `pharmacy_banks` is empty, seed it automatically
+    if (pharmacyBanksList.length === 0 && currentPharmacy.bank_name && currentPharmacy.account_number) {
+        const { data: seededBank } = await supabaseClient
+            .from('pharmacy_banks')
+            .insert([{
+                pharmacy_id: currentPharmacy.id,
+                bank_name: currentPharmacy.bank_name,
+                branch_name: currentPharmacy.bank_branch || currentPharmacy.city || 'Main Branch',
+                account_name: currentPharmacy.account_name || currentPharmacy.pharmacy_name,
+                account_number: currentPharmacy.account_number
+            }])
+            .select();
+        if (seededBank) pharmacyBanksList = seededBank;
+    }
 
     populateCounterFilterDropdown();
     renderDashboardAnalytics();
+    renderBanksTable();
     renderStaffTable();
     renderCatalogTable();
 }
 
+// ==================== BANKING DETAILS MANAGEMENT (`pharmacy_banks`) ====================
+async function handleSaveBankAccount(e) {
+    e.preventDefault();
+    if (!currentPharmacy) return;
+
+    const editId = document.getElementById('edit-bank-id').value.trim();
+    const bankName = document.getElementById('bank-name-input').value.trim();
+    const branchName = document.getElementById('bank-branch-input').value.trim();
+    const accountName = document.getElementById('bank-holder-input').value.trim();
+    const accountNumber = document.getElementById('bank-number-input').value.trim();
+
+    const btn = document.getElementById('btn-save-bank');
+    btn.disabled = true;
+
+    try {
+        if (editId) {
+            const { error } = await supabaseClient
+                .from('pharmacy_banks')
+                .update({
+                    bank_name: bankName,
+                    branch_name: branchName,
+                    account_name: accountName,
+                    account_number: accountNumber
+                })
+                .eq('id', editId)
+                .eq('pharmacy_id', currentPharmacy.id);
+            if (error) throw error;
+            showToast(`Updated bank account (${bankName})!`);
+        } else {
+            const { error } = await supabaseClient
+                .from('pharmacy_banks')
+                .insert([{
+                    pharmacy_id: currentPharmacy.id,
+                    bank_name: bankName,
+                    branch_name: branchName,
+                    account_name: accountName,
+                    account_number: accountNumber
+                }]);
+            if (error) throw error;
+            showToast(`Added ${bankName} account to MediRadar checkout!`);
+        }
+
+        // Also keep the primary bank columns on `public.pharmacies` synced for backward compatibility
+        await supabaseClient
+            .from('pharmacies')
+            .update({
+                bank_name: bankName,
+                bank_branch: branchName,
+                account_name: accountName,
+                account_number: accountNumber
+            })
+            .eq('id', currentPharmacy.id);
+
+        resetBankForm();
+        await refreshAllAdminData();
+    } catch (err) {
+        showToast(err.message || 'Failed to save bank account.', 'error');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+function startEditBankAccount(bankId) {
+    const bank = pharmacyBanksList.find((b) => String(b.id) === String(bankId));
+    if (!bank) return;
+
+    document.getElementById('edit-bank-id').value = bank.id;
+    document.getElementById('bank-name-input').value = bank.bank_name || '';
+    document.getElementById('bank-branch-input').value = bank.branch_name || '';
+    document.getElementById('bank-holder-input').value = bank.account_name || '';
+    document.getElementById('bank-number-input').value = bank.account_number || '';
+
+    document.getElementById('btn-save-bank').innerHTML = '<i class="fa-solid fa-pen-to-square"></i> Update Bank Account';
+    document.getElementById('btn-cancel-bank-edit').classList.remove('hidden');
+}
+
+function resetBankForm() {
+    document.getElementById('bank-account-form').reset();
+    document.getElementById('edit-bank-id').value = '';
+    document.getElementById('btn-save-bank').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Bank Account';
+    document.getElementById('btn-cancel-bank-edit').classList.add('hidden');
+}
+
+async function deleteBankAccount(bankId) {
+    if (!confirm('Remove this bank account from your pharmacy profile and MediRadar checkout?')) return;
+
+    const { error } = await supabaseClient
+        .from('pharmacy_banks')
+        .delete()
+        .eq('id', bankId)
+        .eq('pharmacy_id', currentPharmacy.id);
+
+    if (error) {
+        showToast(error.message, 'error');
+        return;
+    }
+    showToast('Bank account removed.');
+    await refreshAllAdminData();
+}
+
+function renderBanksTable() {
+    const tbody = document.getElementById('pharmacy-banks-tbody');
+    const badge = document.getElementById('sidebar-bank-count');
+    if (badge) badge.textContent = pharmacyBanksList.length;
+
+    tbody.innerHTML = '';
+
+    if (pharmacyBanksList.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#64748b;">No bank accounts added yet. Add your pharmacy bank account above so customers can pay via Bank Transfer on MediRadar.</td></tr>`;
+        return;
+    }
+
+    pharmacyBanksList.forEach((b) => {
+        const dateStr = b.created_at ? new Date(b.created_at).toLocaleDateString() : '-';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><strong><i class="fa-solid fa-building-columns" style="color:var(--brand-primary); margin-right:6px;"></i>${escapeHtml(b.bank_name)}</strong></td>
+            <td>${escapeHtml(b.branch_name || 'Main Branch')}</td>
+            <td>${escapeHtml(b.account_name)}</td>
+            <td><code style="font-size:0.95rem; font-weight:700;">${escapeHtml(b.account_number)}</code></td>
+            <td>${escapeHtml(dateStr)}</td>
+            <td>
+                <div style="display:flex; gap:8px;">
+                    <button type="button" class="btn btn-outline" style="padding:6px 10px;" onclick="startEditBankAccount('${b.id}')" title="Edit Bank Account">
+                        <i class="fa-solid fa-pen"></i> Edit
+                    </button>
+                    <button type="button" class="btn btn-outline" style="padding:6px 10px; color:var(--danger); border-color:var(--danger);" onclick="deleteBankAccount('${b.id}')" title="Delete Bank Account">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
 // ==================== COUNTER & TIME FILTERS & DASHBOARD CHARTS ====================
+function isOnlineMediRadarSale(saleRow) {
+    const c = (saleRow.counter_name || '').toLowerCase();
+    return c.includes('mediradar') || c.includes('web') || c.includes('online');
+}
+
 function populateCounterFilterDropdown() {
     const select = document.getElementById('counter-filter-select');
     const previousValue = select.value || 'ALL';
@@ -173,7 +344,10 @@ function populateCounterFilterDropdown() {
         if (sale.counter_name) counterSet.add(sale.counter_name);
     });
 
-    select.innerHTML = '<option value="ALL">All Counters (Combined Pharmacy Sales)</option>';
+    select.innerHTML = `
+        <option value="ALL">All Channels (POS Counters + MediRadar Online)</option>
+        <option value="MEDIRADAR_ONLY">🌐 MediRadar Online Deals Only</option>
+    `;
     Array.from(counterSet).sort().forEach((counter) => {
         const opt = document.createElement('option');
         opt.value = counter;
@@ -190,9 +364,8 @@ function renderDashboardAnalytics() {
     const selectedCounter = document.getElementById('counter-filter-select').value;
     const selectedTime = document.getElementById('time-filter-select').value;
 
-    // Determine the time cutoff based on dropdown
     const now = new Date();
-    let startTime = new Date(0); // Epoch (All time)
+    let startTime = new Date(0);
 
     if (selectedTime === 'TODAY') {
         startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -203,18 +376,24 @@ function renderDashboardAnalytics() {
         startTime = new Date(now.getFullYear(), now.getMonth(), 1);
     }
 
-    // Apply Time + Counter filters to Sales
     const filteredSales = salesRecords.filter((s) => {
-        const matchCounter = selectedCounter === 'ALL' || s.counter_name === selectedCounter;
+        const matchCounter =
+            selectedCounter === 'ALL' ? true :
+            selectedCounter === 'MEDIRADAR_ONLY' ? isOnlineMediRadarSale(s) :
+            s.counter_name === selectedCounter;
         const saleDate = new Date(s.sold_at);
         const matchTime = saleDate >= startTime;
         return matchCounter && matchTime;
     });
 
-    // Apply Time filter to GRN expenses
     const timeFilteredGrnBatches = grnBatches.filter((b) => {
         const batchDate = new Date(b.created_at);
         return batchDate >= startTime;
+    });
+
+    const timeFilteredOnlineOrders = mediRadarOrders.filter((o) => {
+        const orderDate = new Date(o.created_at);
+        return orderDate >= startTime;
     });
 
     const timeLabel = selectedTime === 'ALL' ? 'All Time' :
@@ -222,15 +401,18 @@ function renderDashboardAnalytics() {
                       selectedTime === 'WEEK' ? 'Last 7 Days' : 'This Month';
 
     document.getElementById('counter-sales-summary-badge').textContent =
-        `${filteredSales.length} Transactions Found (${timeLabel})`;
+        `${filteredSales.length} Sale Items Filtered (${timeLabel})`;
 
     // Calculate Dynamic KPIs
     const totalSalesRevenue = filteredSales.reduce((acc, s) => acc + Number(s.total_amount || 0), 0);
     const totalSalesProfit = filteredSales.reduce((acc, s) => acc + Number(s.profit_amount || 0), 0);
     const totalGrnExpenses = timeFilteredGrnBatches.reduce((acc, b) => acc + (Number(b.quantity_received || 0) * Number(b.unit_cost || 0)), 0);
-    
-    // Active stock valuation remains an all-time snapshot of current physical shelves
     const activeStockValuation = grnBatches.reduce((acc, b) => acc + (Number(b.current_quantity || 0) * Number(b.selling_price || 0)), 0);
+
+    // MediRadar Online Deals KPI (Accepted/Paid online orders + Web sales_transactions)
+    const onlineSalesFromTx = filteredSales.filter(isOnlineMediRadarSale).reduce((acc, s) => acc + Number(s.total_amount || 0), 0);
+    const pendingOnlineCount = timeFilteredOnlineOrders.filter((o) => (o.cashier_approval_status || 'Pending') === 'Pending').length;
+    const acceptedOnlineCount = timeFilteredOnlineOrders.filter((o) => o.cashier_approval_status === 'Accepted' || o.payment_status === 'Paid').length;
 
     const todayStr = new Date().toISOString().split('T')[0];
     const expiredCount = grnBatches.filter((b) => b.expiry_date <= todayStr && b.current_quantity > 0).length;
@@ -238,7 +420,9 @@ function renderDashboardAnalytics() {
     const profitMargin = totalSalesRevenue > 0 ? ((totalSalesProfit / totalSalesRevenue) * 100).toFixed(1) : '0.0';
 
     document.getElementById('kpi-cash-inflow').textContent = `LKR ${formatCurrency(totalSalesRevenue)}`;
-    document.getElementById('kpi-sales-count').textContent = `Across ${filteredSales.length} counter bills`;
+    document.getElementById('kpi-sales-count').textContent = `Across ${filteredSales.length} dispensed items`;
+    document.getElementById('kpi-mediradar-sales').textContent = `LKR ${formatCurrency(onlineSalesFromTx)}`;
+    document.getElementById('kpi-mediradar-count').textContent = `${acceptedOnlineCount} accepted • ${pendingOnlineCount} pending review`;
     document.getElementById('kpi-grn-expenses').textContent = `LKR ${formatCurrency(totalGrnExpenses)}`;
     document.getElementById('kpi-grn-batches').textContent = `${timeFilteredGrnBatches.length} batches recorded in period`;
     document.getElementById('kpi-net-profit').textContent = `LKR ${formatCurrency(totalSalesProfit)}`;
@@ -247,16 +431,24 @@ function renderDashboardAnalytics() {
     document.getElementById('kpi-expired-warning').textContent = `${expiredCount} expired batches requiring removal`;
 
     renderCharts(filteredSales, timeFilteredGrnBatches);
-    
-    // Pass the specifically filtered sales to the table so it also respects the time limit!
     renderCounterBreakdownTable(filteredSales);
+    renderMediRadarDealsTable(timeFilteredOnlineOrders);
+}
+
+function isSameLocalDay(dateStr, refDate) {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    return (
+        d.getFullYear() === refDate.getFullYear() &&
+        d.getMonth() === refDate.getMonth() &&
+        d.getDate() === refDate.getDate()
+    );
 }
 
 function renderCharts(filteredSales, timeFilteredGrnBatches) {
     const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--brand-primary').trim() || '#0d9488';
     const secondaryColor = getComputedStyle(document.documentElement).getPropertyValue('--brand-secondary').trim() || '#0284c7';
 
-    // 1. Cash Flow Trend Chart (Always shows trailing 6 days for visual trend)
     const dayLabels = [];
     const revenueSeries = [];
     const profitSeries = [];
@@ -265,12 +457,11 @@ function renderCharts(filteredSales, timeFilteredGrnBatches) {
     for (let i = 5; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const dateKey = d.toISOString().split('T')[0];
         const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         dayLabels.push(label);
 
-        const daySales = filteredSales.filter((s) => (s.sold_at || '').startsWith(dateKey));
-        const dayGrn = timeFilteredGrnBatches.filter((b) => (b.created_at || '').startsWith(dateKey));
+        const daySales = filteredSales.filter((s) => isSameLocalDay(s.sold_at, d));
+        const dayGrn = timeFilteredGrnBatches.filter((b) => isSameLocalDay(b.created_at, d));
 
         revenueSeries.push(daySales.reduce((sum, s) => sum + Number(s.total_amount || 0), 0));
         profitSeries.push(daySales.reduce((sum, s) => sum + Number(s.profit_amount || 0), 0));
@@ -285,7 +476,7 @@ function renderCharts(filteredSales, timeFilteredGrnBatches) {
         data: {
             labels: dayLabels,
             datasets: [
-                { label: 'Cash Inflow (Sales LKR)', data: revenueSeries, backgroundColor: primaryColor, borderRadius: 6 },
+                { label: 'Cash Inflow (POS + MediRadar LKR)', data: revenueSeries, backgroundColor: primaryColor, borderRadius: 6 },
                 { label: 'GRN Stock Expenses (LKR)', data: expenseSeries, backgroundColor: '#ef4444', borderRadius: 6 },
                 { label: 'Gross Profit (LKR)', data: profitSeries, backgroundColor: '#10b981', borderRadius: 6 }
             ]
@@ -298,7 +489,6 @@ function renderCharts(filteredSales, timeFilteredGrnBatches) {
         }
     });
 
-    // 2. Most Sold Medicines Chart (Dynamic based on selected time filter)
     const medTotals = {};
     filteredSales.forEach((sale) => {
         const name = sale.medicine_name || 'Unknown';
@@ -340,22 +530,22 @@ function renderCounterBreakdownTable(filteredSalesData) {
     const counterMap = {};
     const selectedCounter = document.getElementById('counter-filter-select').value;
 
-    // Pre-populate so registered counters always show up, even with 0 sales in the period
-    staffRecords.filter((s) => s.role === 'cashier').forEach((s) => {
-        const key = s.counter_name || 'Unassigned Counter';
-        if (selectedCounter === 'ALL' || key === selectedCounter) {
-            counterMap[key] = {
-                counter_name: key,
-                cashier_username: s.username,
-                bills: 0,
-                units: 0,
-                revenue: 0,
-                profit: 0
-            };
-        }
-    });
+    if (selectedCounter !== 'MEDIRADAR_ONLY') {
+        staffRecords.filter((s) => s.role === 'cashier').forEach((s) => {
+            const key = s.counter_name || 'Unassigned Counter';
+            if (selectedCounter === 'ALL' || key === selectedCounter) {
+                counterMap[key] = {
+                    counter_name: key,
+                    cashier_username: s.username,
+                    bills: 0,
+                    units: 0,
+                    revenue: 0,
+                    profit: 0
+                };
+            }
+        });
+    }
 
-    // Populate actual time-filtered sales
     filteredSalesData.forEach((s) => {
         const key = s.counter_name || 'Main Counter';
         if (!counterMap[key]) {
@@ -374,9 +564,13 @@ function renderCounterBreakdownTable(filteredSalesData) {
     }
 
     rows.forEach((row) => {
+        const isOnline = isOnlineMediRadarSale(row);
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td><strong>${escapeHtml(row.counter_name)}</strong></td>
+            <td>
+                <strong>${escapeHtml(row.counter_name)}</strong>
+                ${isOnline ? `<span class="badge badge-info" style="margin-left:6px;">MediRadar Web</span>` : ''}
+            </td>
             <td><code>${escapeHtml(row.cashier_username)}</code></td>
             <td><span class="badge badge-info">${row.bills} Sales</span></td>
             <td>${row.units} Units</td>
@@ -387,7 +581,59 @@ function renderCounterBreakdownTable(filteredSalesData) {
     });
 }
 
-// ==================== STAFF & COUNTER MANAGEMENT (WITH ENCRYPTION) ====================
+function renderMediRadarDealsTable(ordersList) {
+    const tbody = document.getElementById('mediradar-deals-tbody');
+    const badge = document.getElementById('mediradar-ledger-badge');
+    if (badge) badge.textContent = `${ordersList.length} Online Orders`;
+
+    tbody.innerHTML = '';
+
+    if (ordersList.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#64748b;">No MediRadar online customer orders recorded in this period yet.</td></tr>`;
+        return;
+    }
+
+    ordersList.forEach((o) => {
+        const dt = o.created_at ? new Date(o.created_at).toLocaleString() : '-';
+        const items = o.customer_order_items || [];
+        const itemsText = items.length > 0
+            ? items.map((i) => `${escapeHtml(i.medicine_name || 'Medicine')} (x${i.quantity})`).join(', ')
+            : 'Online Order Items';
+
+        const approval = o.cashier_approval_status || 'Pending';
+        let statusHtml = `<span class="badge badge-warning">Pending Cashier Review</span>`;
+        if (approval === 'Accepted') {
+            statusHtml = `<span class="badge badge-success">Accepted (${escapeHtml(o.reviewed_by || 'POS')})</span>`;
+        } else if (approval === 'Rejected') {
+            statusHtml = `<span class="badge badge-danger">Rejected (${escapeHtml(o.rejection_reason || 'Invalid Slip')})</span>`;
+        }
+
+        const slipLink = o.receipt_image_url
+            ? `<br><a href="${escapeHtml(o.receipt_image_url)}" target="_blank" style="color:var(--brand-primary); font-weight:700; font-size:0.78rem;"><i class="fa-solid fa-image"></i> View Bank Slip</a>`
+            : '';
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><small>${escapeHtml(dt)}</small></td>
+            <td><code>${escapeHtml(o.invoice_no || o.id.slice(0, 8))}</code></td>
+            <td>
+                <strong>${escapeHtml(o.customer_name || 'MediRadar Customer')}</strong>
+                <small style="display:block; color:#64748b;">Tel: ${escapeHtml(o.customer_phone || '-')} • ${escapeHtml(o.delivery_address || '-')}</small>
+            </td>
+            <td>${itemsText}</td>
+            <td>
+                <strong>${escapeHtml(o.payment_method || 'Card')}</strong>
+                <small style="display:block; color:#64748b;">${escapeHtml(o.bank_reference || '')}</small>
+                ${slipLink}
+            </td>
+            <td><strong>LKR ${formatCurrency(o.total_amount)}</strong></td>
+            <td>${statusHtml}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+// ==================== STAFF & COUNTER MANAGEMENT ====================
 function toggleCounterField() {
     const role = document.getElementById('staff-role').value;
     const label = document.getElementById('staff-counter-label');
@@ -547,61 +793,6 @@ function renderCatalogTable() {
         `;
         tbody.appendChild(tr);
     });
-}
-
-// ==================== SIMULATE COUNTER SALES ====================
-async function seedSampleCounterSales() {
-    if (!currentPharmacy) return;
-
-    const sampleMeds = [
-        { name: 'Panadol Paracetamol 500mg', cost: 8, price: 14 },
-        { name: 'Amoxicillin 500mg Capsules', cost: 28, price: 45 },
-        { name: 'Augmentin 625mg Duo Tab', cost: 140, price: 210 },
-        { name: 'Cetirizine 10mg Antihistamine', cost: 6, price: 12 },
-        { name: 'Losartan Potassium 50mg', cost: 18, price: 32 },
-        { name: 'Metformin HCl 500mg Sustained', cost: 11, price: 20 }
-    ];
-
-    const counters = [
-        { counter: 'Counter 01', user: 'cashier_01' },
-        { counter: 'Counter 02', user: 'cashier_02' },
-        { counter: 'Counter 03 (Express)', user: 'cashier_03' }
-    ];
-
-    const rowsToInsert = [];
-    for (let i = 0; i < 12; i++) {
-        const med = sampleMeds[Math.floor(Math.random() * sampleMeds.length)];
-        const c = counters[Math.floor(Math.random() * counters.length)];
-        const qty = Math.floor(Math.random() * 25) + 5;
-        
-        // Randomize the dates specifically to test the new Time filters!
-        const daysAgo = Math.floor(Math.random() * 10); 
-        const saleDate = new Date();
-        saleDate.setDate(saleDate.getDate() - daysAgo);
-
-        rowsToInsert.push({
-            pharmacy_id: currentPharmacy.id,
-            invoice_no: `INV-${Math.floor(10000 + Math.random() * 90000)}`,
-            counter_name: c.counter,
-            cashier_username: c.user,
-            medicine_name: med.name,
-            quantity_sold: qty,
-            unit_cost: med.cost,
-            unit_price: med.price,
-            total_amount: qty * med.price,
-            profit_amount: qty * (med.price - med.cost),
-            sold_at: saleDate.toISOString()
-        });
-    }
-
-    const { error } = await supabaseClient.from('sales_transactions').insert(rowsToInsert);
-    if (error) {
-        showToast(error.message, 'error');
-        return;
-    }
-
-    showToast('12 Counter Sales simulated! Test out your Time Filters!');
-    await refreshAllAdminData();
 }
 
 // ==================== UI NAVIGATION & HELPERS ====================
