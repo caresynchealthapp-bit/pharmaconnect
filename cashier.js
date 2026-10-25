@@ -33,7 +33,7 @@ const PHARMACY_THEMES = [
 // State
 let currentPharmacy = null;
 let availableBatches = [];
-let allGrammar BatchesForLookup = [];
+let allBatchesForLookup = [];
 let todaySalesList = [];
 let onlineOrdersList = [];
 let pendingOnlineOrders = [];
@@ -192,7 +192,7 @@ async function refreshCashierData(silent = false) {
     ]);
 
     const allStock = stockRes.data || [];
-    allGrammarBatchesForLookup = allStock;
+    allBatchesForLookup = allStock;
     availableBatches = allStock.filter((b) => b.current_quantity > 0 && b.expiry_date > todayStr);
 
     // Filter sales made Today (local date match + trailing 24h fallback)
@@ -423,9 +423,9 @@ async function handleCashierOrderDecision(orderId, decision) {
                 const unitPrice = Number(item.unit_price || 0);
 
                 // Find matching batch by grn_stock_id or medicine_name
-                let batch = allGrammarBatchesForLookup.find((b) => String(b.id) === String(item.grn_stock_id));
+                let batch = allBatchesForLookup.find((b) => String(b.id) === String(item.grn_stock_id));
                 if (!batch && item.medicine_name) {
-                    batch = allGrammarBatchesForLookup.find(
+                    batch = allBatchesForLookup.find(
                         (b) => (b.medicine_name || '').toLowerCase() === item.medicine_name.toLowerCase() && b.current_quantity > 0
                     );
                 }
