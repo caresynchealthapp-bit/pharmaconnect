@@ -1030,7 +1030,7 @@ function renderCatalogTable() {
             const headerTr = document.createElement('tr');
             headerTr.innerHTML = `
                 <td colspan="6" style="background:#f8fafc; color:#475569; font-weight:800; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.5px; padding:10px 16px; border-top:2px solid #cbd5e1; border-bottom:1px solid #e2e8f0;">
-                    <i class="fa-solid fa-globe" style="margin-right:6px; color:#0284c7;"></i> Other Medicines in Global Catalog (You can also add/manage photos)
+                    <i class="fa-solid fa-globe" style="margin-right:6px; color:#0284c7;"></i> Other Medicines in Global Catalog 
                 </td>
             `;
             tbody.appendChild(headerTr);
