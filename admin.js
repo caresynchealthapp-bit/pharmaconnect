@@ -740,24 +740,207 @@ async function deleteStaffAccount(staffId) {
     await refreshAllAdminData();
 }
 
-// ==================== MASTER MEDICINE CATALOG (`medicines` TABLE) ====================
+// ==================== MASTER MEDICINE CATALOG & PHOTO MANAGEMENT ====================
+let stagedCatalogFiles = [];
+let targetMedicineForPhotoUpload = null;
+
+function handleSelectStagedCatalogPhotos(event) {
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
+
+    files.forEach((file) => stagedCatalogFiles.push(file));
+    event.target.value = ''; // Reset input so same file can be re-selected if needed
+    renderStagedCatalogPhotos();
+}
+
+function removeStagedCatalogPhoto(index) {
+    stagedCatalogFiles.splice(index, 1);
+    renderStagedCatalogPhotos();
+}
+
+function clearAllStagedCatalogPhotos() {
+    stagedCatalogFiles = [];
+    renderStagedCatalogPhotos();
+}
+
+function renderStagedCatalogPhotos() {
+    const wrapper = document.getElementById('staged-catalog-photos-wrapper');
+    const list = document.getElementById('staged-catalog-photos-list');
+    if (!wrapper || !list) return;
+
+    if (stagedCatalogFiles.length === 0) {
+        wrapper.classList.add('hidden');
+        list.innerHTML = '';
+        return;
+    }
+
+    wrapper.classList.remove('hidden');
+    list.innerHTML = stagedCatalogFiles.map((file, idx) => {
+        const previewUrl = URL.createObjectURL(file);
+        return `
+            <div style="position:relative; width:68px; height:68px; border-radius:10px; overflow:hidden; border:2px solid #cbd5e1; background:#fff; box-shadow:0 2px 4px rgba(0,0,0,0.06);">
+                <img src="${previewUrl}" alt="Preview" style="width:100%; height:100%; object-fit:cover;">
+                <button type="button" onclick="removeStagedCatalogPhoto(${idx})" title="Remove this photo"
+                    style="position:absolute; top:3px; right:3px; width:20px; height:20px; border-radius:50%; background:#ef4444; color:#fff; border:none; font-size:11px; font-weight:800; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,0.3);">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+        `;
+    }).join('');
+}
+
+async function uploadMedicinePhotoFilesToSupabase(filesArray) {
+    const uploadedUrls = [];
+    for (const file of filesArray) {
+        const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+        const filePath = `med_${currentPharmacy.id}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
+
+        const { error: uploadErr } = await supabaseClient
+            .storage
+            .from('medicine_images')
+            .upload(filePath, file, { cacheControl: '3600', upsert: true });
+
+        if (uploadErr) throw new Error(`Photo upload failed: ${uploadErr.message}`);
+
+        const { data: pubData } = supabaseClient
+            .storage
+            .from('medicine_images')
+            .getPublicUrl(filePath);
+
+        if (pubData && pubData.publicUrl) {
+            uploadedUrls.push(pubData.publicUrl);
+        }
+    }
+    return uploadedUrls;
+}
+
 async function handleAddCatalogMedicine(e) {
     e.preventDefault();
     const nameInput = document.getElementById('catalog-medicine-name');
+    const submitBtn = document.getElementById('btn-submit-catalog-med');
     const medName = nameInput.value.trim();
     if (!medName || !currentPharmacy) return;
+
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+    }
+
+    try {
+        const uploadedUrls = await uploadMedicinePhotoFilesToSupabase(stagedCatalogFiles);
+
+        // Check if medicine already exists in this pharmacy's catalog
+        const existingMed = medicineCatalog.find(
+            (m) => (m.name || '').trim().toLowerCase() === medName.toLowerCase()
+        );
+
+        if (existingMed) {
+            const mergedUrls = [...(Array.isArray(existingMed.image_urls) ? existingMed.image_urls : []), ...uploadedUrls];
+            const { error } = await supabaseClient
+                .from('medicines')
+                .update({ image_urls: mergedUrls })
+                .eq('id', existingMed.id);
+            if (error) throw error;
+        } else {
+            const { error } = await supabaseClient
+                .from('medicines')
+                .insert([{
+                    name: medName,
+                    pharmacy_id: currentPharmacy.id,
+                    image_urls: uploadedUrls
+                }]);
+            if (error) throw error;
+        }
+
+        nameInput.value = '';
+        clearAllStagedCatalogPhotos();
+        showToast(`"${medName}" saved to your catalog with ${uploadedUrls.length} photo(s)!`);
+        await refreshAllAdminData();
+    } catch (err) {
+        showToast(err.message || 'Failed to save medicine.', 'error');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Add to Medicine Catalog';
+        }
+    }
+}
+
+// Triggered when Pharmacy Owner clicks "+ Add Photos" on any row in the catalog table
+function triggerAddPhotosForMedicine(encodedMedName) {
+    targetMedicineForPhotoUpload = decodeURIComponent(encodedMedName);
+    const fileInput = document.getElementById('existing-medicine-photo-input');
+    if (fileInput) {
+        fileInput.value = '';
+        fileInput.click();
+    }
+}
+
+async function handleUploadPhotosToExistingMedicine(event) {
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0 || !targetMedicineForPhotoUpload || !currentPharmacy) return;
+
+    const medName = targetMedicineForPhotoUpload;
+    targetMedicineForPhotoUpload = null;
+
+    try {
+        showToast(`Uploading ${files.length} photo(s) for "${medName}"...`);
+        const newUrls = await uploadMedicinePhotoFilesToSupabase(files);
+
+        const existingMed = medicineCatalog.find(
+            (m) => (m.name || '').trim().toLowerCase() === medName.toLowerCase()
+        );
+
+        if (existingMed) {
+            const currentUrls = Array.isArray(existingMed.image_urls) ? existingMed.image_urls : [];
+            const updatedUrls = [...currentUrls, ...newUrls];
+            const { error } = await supabaseClient
+                .from('medicines')
+                .update({ image_urls: updatedUrls })
+                .eq('id', existingMed.id);
+            if (error) throw error;
+        } else {
+            // If medicine was only in GRN batches, create its catalog record with photos now
+            const { error } = await supabaseClient
+                .from('medicines')
+                .insert([{
+                    name: medName,
+                    pharmacy_id: currentPharmacy.id,
+                    image_urls: newUrls
+                }]);
+            if (error) throw error;
+        }
+
+        showToast(`Added ${newUrls.length} photo(s) to "${medName}"!`);
+        await refreshAllAdminData();
+    } catch (err) {
+        showToast(err.message || 'Error uploading photos.', 'error');
+    }
+}
+
+async function removeMedicinePhotoFromCatalog(encodedMedName, encodedPhotoUrl) {
+    const medName = decodeURIComponent(encodedMedName);
+    const photoUrl = decodeURIComponent(encodedPhotoUrl);
+
+    const existingMed = medicineCatalog.find(
+        (m) => (m.name || '').trim().toLowerCase() === medName.toLowerCase()
+    );
+    if (!existingMed) return;
+
+    const updatedUrls = (Array.isArray(existingMed.image_urls) ? existingMed.image_urls : [])
+        .filter((u) => u !== photoUrl);
 
     try {
         const { error } = await supabaseClient
             .from('medicines')
-            .insert([{ name: medName, pharmacy_id: currentPharmacy.id }]);
-
+            .update({ image_urls: updatedUrls })
+            .eq('id', existingMed.id);
         if (error) throw error;
-        nameInput.value = '';
-        showToast(`"${medName}" added to your pharmacy's catalog!`);
+
+        showToast(`Removed photo from "${medName}".`);
         await refreshAllAdminData();
     } catch (err) {
-        showToast(err.message, 'error');
+        showToast(err.message || 'Could not remove photo.', 'error');
     }
 }
 
@@ -766,26 +949,62 @@ function renderCatalogTable() {
     tbody.innerHTML = '';
 
     const allMedNames = new Set(medicineCatalog.map((m) => m.name));
-    grnBatches.forEach((b) => allMedNames.add(b.medicine_name));
+    grnBatches.forEach((b) => {
+        if (b.medicine_name) allMedNames.add(b.medicine_name);
+    });
 
     const namesArray = Array.from(allMedNames).sort();
     if (namesArray.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#64748b;">No medicines registered in catalog yet.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#64748b;">No medicines registered in catalog yet.</td></tr>`;
         return;
     }
 
     namesArray.forEach((medName) => {
-        const matchingBatches = grnBatches.filter((b) => (b.medicine_name || '').toLowerCase() === medName.toLowerCase() && b.current_quantity > 0);
-        const totalQty = matchingBatches.reduce((sum, b) => sum + Number(b.current_quantity || 0), 0);
-        const avgPrice = matchingBatches.length > 0 ? matchingBatches.reduce((sum, b) => sum + Number(b.selling_price || 0), 0) / matchingBatches.length : 0;
+        const catalogEntry = medicineCatalog.find(
+            (m) => (m.name || '').trim().toLowerCase() === medName.toLowerCase()
+        );
+        const photos = (catalogEntry && Array.isArray(catalogEntry.image_urls)) ? catalogEntry.image_urls : [];
 
-        let statusBadge = totalQty > 50 ? '<span class="badge badge-success">Healthy Stock</span>' : 
-                          totalQty > 0 ? '<span class="badge badge-warning">Low Stock</span>' : 
-                          '<span class="badge badge-danger">Out of Stock</span>';
+        const matchingBatches = grnBatches.filter(
+            (b) => (b.medicine_name || '').toLowerCase() === medName.toLowerCase() && b.current_quantity > 0
+        );
+        const totalQty = matchingBatches.reduce((sum, b) => sum + Number(b.current_quantity || 0), 0);
+        const avgPrice = matchingBatches.length > 0
+            ? matchingBatches.reduce((sum, b) => sum + Number(b.selling_price || 0), 0) / matchingBatches.length
+            : 0;
+
+        const statusBadge = totalQty > 50
+            ? '<span class="badge badge-success">Healthy Stock</span>'
+            : totalQty > 0
+            ? '<span class="badge badge-warning">Low Stock</span>'
+            : '<span class="badge badge-danger">Out of Stock</span>';
+
+        const encodedName = encodeURIComponent(medName);
+
+        const photosHtml = photos.map((url) => {
+            const encodedUrl = encodeURIComponent(url);
+            return `
+                <div style="position:relative; width:44px; height:44px; border-radius:8px; overflow:hidden; border:1px solid #cbd5e1; background:#fff; flex-shrink:0;">
+                    <img src="${escapeHtml(url)}" alt="${escapeHtml(medName)}" style="width:100%; height:100%; object-fit:cover;">
+                    <button type="button" onclick="removeMedicinePhotoFromCatalog('${encodedName}', '${encodedUrl}')" title="Remove Photo"
+                        style="position:absolute; top:2px; right:2px; width:16px; height:16px; border-radius:50%; background:rgba(239,68,68,0.95); color:#fff; border:none; font-size:9px; cursor:pointer; display:flex; align-items:center; justify-content:center;">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            `;
+        }).join('');
 
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><strong>${escapeHtml(medName)}</strong></td>
+            <td>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    ${photosHtml || '<span style="font-size:0.75rem; color:#94a3b8;">No photos</span>'}
+                    <button type="button" class="btn btn-outline" style="padding:5px 10px; font-size:0.75rem;" onclick="triggerAddPhotosForMedicine('${encodedName}')">
+                        <i class="fa-solid fa-camera"></i> + Add Photos
+                    </button>
+                </div>
+            </td>
             <td>${matchingBatches.length} Batches</td>
             <td><strong>${totalQty}</strong> Units</td>
             <td>LKR ${formatCurrency(avgPrice)}</td>

@@ -382,14 +382,40 @@
             <section id="tab-catalog" class="tab-panel">
                 <div class="panel-card">
                     <div class="panel-header">
-                        <h2><i class="fa-solid fa-prescription-bottle-medical"></i> Register New Medicine Name in Master Catalog</h2>
+                        <h2><i class="fa-solid fa-prescription-bottle-medical"></i> Register New Medicine Name & Photos in Master Catalog</h2>
                     </div>
-                    <form id="add-medicine-catalog-form" style="display:flex; gap:12px; flex-wrap:wrap;">
-                        <input type="text" id="catalog-medicine-name" class="input-control" style="flex:1; min-width:260px;" required placeholder="e.g., Amoxicillin 500mg Capsules (BP)">
-                        <button type="submit" class="btn btn-brand">
-                            <i class="fa-solid fa-plus"></i> Add to Medicine Catalog
-                        </button>
+                    <form id="add-medicine-catalog-form" style="display:flex; flex-direction:column; gap:14px;">
+                        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+                            <input type="text" id="catalog-medicine-name" class="input-control" style="flex:1; min-width:260px;" required placeholder="e.g., Amoxicillin 500mg Capsules (BP)">
+                            
+                            <!-- Multi-Photo Picker Button -->
+                            <label for="catalog-medicine-photos" class="btn btn-outline" style="cursor:pointer; margin:0; display:inline-flex; align-items:center; gap:8px;">
+                                <i class="fa-solid fa-images" style="color:var(--brand-primary);"></i>
+                                <span>Select Photo(s)</span>
+                            </label>
+                            <input type="file" id="catalog-medicine-photos" accept="image/*" multiple style="display:none;" onchange="handleSelectStagedCatalogPhotos(event)">
+
+                            <button type="submit" id="btn-submit-catalog-med" class="btn btn-brand">
+                                <i class="fa-solid fa-plus"></i> Add to Medicine Catalog
+                            </button>
+                        </div>
+
+                        <!-- Live Staged Photo Previews (With Remove Button Before Submitting) -->
+                        <div id="staged-catalog-photos-wrapper" class="hidden" style="background:#f8fafc; border:1px dashed #cbd5e1; border-radius:12px; padding:12px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <span style="font-size:0.78rem; font-weight:700; color:#475569;">
+                                    <i class="fa-solid fa-eye"></i> Selected Photos to Upload (Click × to remove any mistake before saving):
+                                </span>
+                                <button type="button" onclick="clearAllStagedCatalogPhotos()" style="background:none; border:none; color:#ef4444; font-size:0.75rem; font-weight:700; cursor:pointer;">
+                                    Clear All
+                                </button>
+                            </div>
+                            <div id="staged-catalog-photos-list" style="display:flex; gap:10px; flex-wrap:wrap;"></div>
+                        </div>
                     </form>
+
+                    <!-- Hidden file input used by the table rows to add photos to existing medicines -->
+                    <input type="file" id="existing-medicine-photo-input" accept="image/*" multiple style="display:none;" onchange="handleUploadPhotosToExistingMedicine(event)">
                 </div>
 
                 <div class="panel-card">
@@ -401,6 +427,7 @@
                             <thead>
                                 <tr>
                                     <th>Medicine Name (`medicines` table)</th>
+                                    <th>Medicine Photos (Add / Remove)</th>
                                     <th>Active Batches in GRN</th>
                                     <th>Total Available Units</th>
                                     <th>Average Selling Price</th>
