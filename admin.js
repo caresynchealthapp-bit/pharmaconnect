@@ -156,7 +156,7 @@ async function refreshAllAdminData() {
         supabaseClient.from('pharmacy_staff').select('*').eq('pharmacy_id', currentPharmacy.id).order('created_at', { ascending: false }),
         supabaseClient.from('grn_stock').select('*').eq('pharmacy_id', currentPharmacy.id).order('created_at', { ascending: false }),
         supabaseClient.from('sales_transactions').select('*').eq('pharmacy_id', currentPharmacy.id).order('sold_at', { ascending: false }),
-        supabaseClient.from('medicines').select('*').eq('pharmacy_id', currentPharmacy.id).order('name', { ascending: true }),
+        supabaseClient.from('medicines').select('*').order('name', { ascending: true }),
         supabaseClient.from('pharmacy_banks').select('*').eq('pharmacy_id', currentPharmacy.id).order('created_at', { ascending: true }),
         supabaseClient.from('customer_orders').select('*, customer_order_items(*)').eq('pharmacy_id', currentPharmacy.id).order('created_at', { ascending: false })
     ]);
@@ -829,10 +829,10 @@ async function handleAddCatalogMedicine(e) {
     try {
         const uploadedUrls = await uploadMedicinePhotoFilesToSupabase(stagedCatalogFiles);
 
-        // Check if medicine already exists in this pharmacy's catalog
-        const existingMed = medicineCatalog.find(
-            (m) => (m.name || '').trim().toLowerCase() === medName.toLowerCase()
-        );
+        // Prefer the row created by this pharmacy, or fall back to any existing row with the same name
+        const existingMed =
+            medicineCatalog.find((m) => (m.name || '').trim().toLowerCase() === medName.toLowerCase() && String(m.pharmacy_id) === String(currentPharmacy.id)) ||
+            medicineCatalog.find((m) => (m.name || '').trim().toLowerCase() === medName.toLowerCase());
 
         if (existingMed) {
             const mergedUrls = [...(Array.isArray(existingMed.image_urls) ? existingMed.image_urls : []), ...uploadedUrls];
@@ -887,20 +887,25 @@ async function handleUploadPhotosToExistingMedicine(event) {
         showToast(`Uploading ${files.length} photo(s) for "${medName}"...`);
         const newUrls = await uploadMedicinePhotoFilesToSupabase(files);
 
-        const existingMed = medicineCatalog.find(
+        // Find all rows in `medicines` matching this medicine name (across all pharmacies)
+        const matchingRows = medicineCatalog.filter(
             (m) => (m.name || '').trim().toLowerCase() === medName.toLowerCase()
         );
 
-        if (existingMed) {
-            const currentUrls = Array.isArray(existingMed.image_urls) ? existingMed.image_urls : [];
-            const updatedUrls = [...currentUrls, ...newUrls];
-            const { error } = await supabaseClient
-                .from('medicines')
-                .update({ image_urls: updatedUrls })
-                .eq('id', existingMed.id);
-            if (error) throw error;
+        if (matchingRows.length > 0) {
+            // Merge existing photos from all matching rows + newly uploaded URLs
+            const existingPhotos = matchingRows.flatMap((m) => (Array.isArray(m.image_urls) ? m.image_urls : []));
+            const updatedUrls = [...new Set([...existingPhotos, ...newUrls])];
+
+            for (const row of matchingRows) {
+                const { error } = await supabaseClient
+                    .from('medicines')
+                    .update({ image_urls: updatedUrls })
+                    .eq('id', row.id);
+                if (error) throw error;
+            }
         } else {
-            // If medicine was only in GRN batches, create its catalog record with photos now
+            // If medicine only existed in GRN stock, insert a new row into `medicines`
             const { error } = await supabaseClient
                 .from('medicines')
                 .insert([{
@@ -922,20 +927,22 @@ async function removeMedicinePhotoFromCatalog(encodedMedName, encodedPhotoUrl) {
     const medName = decodeURIComponent(encodedMedName);
     const photoUrl = decodeURIComponent(encodedPhotoUrl);
 
-    const existingMed = medicineCatalog.find(
+    const matchingRows = medicineCatalog.filter(
         (m) => (m.name || '').trim().toLowerCase() === medName.toLowerCase()
     );
-    if (!existingMed) return;
-
-    const updatedUrls = (Array.isArray(existingMed.image_urls) ? existingMed.image_urls : [])
-        .filter((u) => u !== photoUrl);
+    if (matchingRows.length === 0) return;
 
     try {
-        const { error } = await supabaseClient
-            .from('medicines')
-            .update({ image_urls: updatedUrls })
-            .eq('id', existingMed.id);
-        if (error) throw error;
+        for (const row of matchingRows) {
+            const updatedUrls = (Array.isArray(row.image_urls) ? row.image_urls : [])
+                .filter((u) => u !== photoUrl);
+
+            const { error } = await supabaseClient
+                .from('medicines')
+                .update({ image_urls: updatedUrls })
+                .eq('id', row.id);
+            if (error) throw error;
+        }
 
         showToast(`Removed photo from "${medName}".`);
         await refreshAllAdminData();
@@ -948,22 +955,86 @@ function renderCatalogTable() {
     const tbody = document.getElementById('catalog-stock-tbody');
     tbody.innerHTML = '';
 
-    const allMedNames = new Set(medicineCatalog.map((m) => m.name));
-    grnBatches.forEach((b) => {
-        if (b.medicine_name) allMedNames.add(b.medicine_name);
+    // Map unique medicine names (case-insensitive) so duplicates across pharmacies merge cleanly
+    const medMap = new Map();
+
+    medicineCatalog.forEach((m) => {
+        const rawName = (m.name || '').trim();
+        if (!rawName) return;
+        const key = rawName.toLowerCase();
+        const isMine = String(m.pharmacy_id) === String(currentPharmacy.id);
+        const urls = Array.isArray(m.image_urls) ? m.image_urls : [];
+
+        if (!medMap.has(key)) {
+            medMap.set(key, {
+                name: rawName,
+                isOwnPharmacy: isMine,
+                photos: [...urls]
+            });
+        } else {
+            const entry = medMap.get(key);
+            if (isMine) entry.isOwnPharmacy = true;
+            entry.photos = [...new Set([...entry.photos, ...urls])];
+        }
     });
 
-    const namesArray = Array.from(allMedNames).sort();
-    if (namesArray.length === 0) {
+    // Also include any medicine from this pharmacy's GRN stock
+    grnBatches.forEach((b) => {
+        const rawName = (b.medicine_name || '').trim();
+        if (!rawName) return;
+        const key = rawName.toLowerCase();
+        if (!medMap.has(key)) {
+            medMap.set(key, {
+                name: rawName,
+                isOwnPharmacy: true,
+                photos: []
+            });
+        } else {
+            medMap.get(key).isOwnPharmacy = true;
+        }
+    });
+
+    const allItems = Array.from(medMap.values());
+    if (allItems.length === 0) {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#64748b;">No medicines registered in catalog yet.</td></tr>`;
         return;
     }
 
-    namesArray.forEach((medName) => {
-        const catalogEntry = medicineCatalog.find(
-            (m) => (m.name || '').trim().toLowerCase() === medName.toLowerCase()
-        );
-        const photos = (catalogEntry && Array.isArray(catalogEntry.image_urls)) ? catalogEntry.image_urls : [];
+    // Sort: 1) Medicines added/stocked by THIS pharmacy first, 2) Other pharmacies' medicines second
+    allItems.sort((a, b) => {
+        if (a.isOwnPharmacy !== b.isOwnPharmacy) return a.isOwnPharmacy ? -1 : 1;
+        return a.name.localeCompare(b.name);
+    });
+
+    let renderedOwnHeader = false;
+    let renderedOtherHeader = false;
+
+    allItems.forEach((item) => {
+        const medName = item.name;
+
+        // Section Divider 1: Added / Stocked by Your Pharmacy
+        if (item.isOwnPharmacy && !renderedOwnHeader) {
+            renderedOwnHeader = true;
+            const headerTr = document.createElement('tr');
+            headerTr.innerHTML = `
+                <td colspan="6" style="background:#f0fdf4; color:#166534; font-weight:800; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.5px; padding:10px 16px; border-top:2px solid #bbf7d0; border-bottom:1px solid #bbf7d0;">
+                    <i class="fa-solid fa-House-medical-circle-check" style="margin-right:6px;"></i> Medicines Added / Stocked by ${escapeHtml(currentPharmacy.pharmacy_name)}
+                </td>
+            `;
+            tbody.appendChild(headerTr);
+        }
+
+        // Section Divider 2: Other Medicines in Global Catalog
+        if (!item.isOwnPharmacy && !renderedOtherHeader) {
+            renderedOtherHeader = true;
+            const headerTr = document.createElement('tr');
+            headerTr.innerHTML = `
+                <td colspan="6" style="background:#f8fafc; color:#475569; font-weight:800; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.5px; padding:10px 16px; border-top:2px solid #cbd5e1; border-bottom:1px solid #e2e8f0;">
+                    <i class="fa-solid fa-globe" style="margin-right:6px; color:#0284c7;"></i> Other Medicines in Global Catalog (You can also add/manage photos)
+                </td>
+            `;
+            tbody.appendChild(headerTr);
+        }
 
         const matchingBatches = grnBatches.filter(
             (b) => (b.medicine_name || '').toLowerCase() === medName.toLowerCase() && b.current_quantity > 0
@@ -977,11 +1048,15 @@ function renderCatalogTable() {
             ? '<span class="badge badge-success">Healthy Stock</span>'
             : totalQty > 0
             ? '<span class="badge badge-warning">Low Stock</span>'
-            : '<span class="badge badge-danger">Out of Stock</span>';
+            : '<span class="badge badge-danger">No Local Stock</span>';
+
+        const ownershipBadge = item.isOwnPharmacy
+            ? `<span class="badge badge-success" style="font-size:0.68rem; margin-left:8px;"><i class="fa-solid fa-store"></i> Your Pharmacy</span>`
+            : `<span class="badge badge-info" style="font-size:0.68rem; margin-left:8px; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;"><i class="fa-solid fa-globe"></i> Other Pharmacy</span>`;
 
         const encodedName = encodeURIComponent(medName);
 
-        const photosHtml = photos.map((url) => {
+        const photosHtml = item.photos.map((url) => {
             const encodedUrl = encodeURIComponent(url);
             return `
                 <div style="position:relative; width:44px; height:44px; border-radius:8px; overflow:hidden; border:1px solid #cbd5e1; background:#fff; flex-shrink:0;">
@@ -995,8 +1070,17 @@ function renderCatalogTable() {
         }).join('');
 
         const tr = document.createElement('tr');
+        if (!item.isOwnPharmacy) {
+            tr.style.backgroundColor = '#fcfcfd';
+        }
+
         tr.innerHTML = `
-            <td><strong>${escapeHtml(medName)}</strong></td>
+            <td>
+                <div style="display:flex; align-items:center; flex-wrap:wrap; gap:4px;">
+                    <strong>${escapeHtml(medName)}</strong>
+                    ${ownershipBadge}
+                </div>
+            </td>
             <td>
                 <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                     ${photosHtml || '<span style="font-size:0.75rem; color:#94a3b8;">No photos</span>'}
