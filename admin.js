@@ -112,6 +112,11 @@ async function loadTenantPharmacyDetails(pharmacyId) {
     }
     document.getElementById('link-open-grn').href = `grn.html?pharmacy_id=${encodeURIComponent(data.id)}`;
 
+    const normalFeeInput = document.getElementById('normal-delivery-fee-input');
+    const samedayFeeInput = document.getElementById('sameday-delivery-fee-input');
+    if (normalFeeInput) normalFeeInput.value = Number(data.normal_delivery_fee ?? 250).toFixed(2);
+    if (samedayFeeInput) samedayFeeInput.value = Number(data.sameday_delivery_fee ?? 500).toFixed(2);
+
     const savedThemeIdx = localStorage.getItem(`theme_${data.id}`);
     const hashIdx = data.pharmacy_name.length % PHARMACY_THEMES.length;
     applyPharmacyTheme(savedThemeIdx !== null ? Number(savedThemeIdx) : hashIdx);
@@ -137,6 +142,11 @@ function setupAdminListeners() {
     document.getElementById('create-staff-form').addEventListener('submit', handleCreateStaff);
     document.getElementById('add-medicine-catalog-form').addEventListener('submit', handleAddCatalogMedicine);
     document.getElementById('bank-account-form').addEventListener('submit', handleSaveBankAccount);
+    
+    const deliveryForm = document.getElementById('delivery-fees-form');
+    if (deliveryForm) {
+        deliveryForm.addEventListener('submit', handleSaveDeliveryFees);
+    }
 }
 
 function subscribeToAdminRealtime() {
@@ -188,6 +198,36 @@ async function refreshAllAdminData() {
     renderBanksTable();
     renderStaffTable();
     renderCatalogTable();
+}
+
+async function handleSaveDeliveryFees(e) {
+    e.preventDefault();
+    if (!currentPharmacy) return;
+
+    const normalFee = Math.max(0, parseFloat(document.getElementById('normal-delivery-fee-input').value) || 0);
+    const samedayFee = Math.max(0, parseFloat(document.getElementById('sameday-delivery-fee-input').value) || 0);
+    const btn = document.getElementById('btn-save-delivery-fees');
+    if (btn) btn.disabled = true;
+
+    try {
+        const { error } = await supabaseClient
+            .from('pharmacies')
+            .update({
+                normal_delivery_fee: normalFee,
+                sameday_delivery_fee: samedayFee
+            })
+            .eq('id', currentPharmacy.id);
+
+        if (error) throw error;
+
+        currentPharmacy.normal_delivery_fee = normalFee;
+        currentPharmacy.sameday_delivery_fee = samedayFee;
+        showToast(`Saved Delivery Fees: Normal LKR ${formatCurrency(normalFee)} | Same-Day LKR ${formatCurrency(samedayFee)}`);
+    } catch (err) {
+        showToast(err.message || 'Failed to save delivery fees.', 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
 }
 
 // ==================== BANKING DETAILS MANAGEMENT (`pharmacy_banks`) ====================
