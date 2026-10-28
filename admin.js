@@ -817,8 +817,14 @@ async function uploadMedicinePhotoFilesToSupabase(filesArray) {
 async function handleAddCatalogMedicine(e) {
     e.preventDefault();
     const nameInput = document.getElementById('catalog-medicine-name');
+    const genericInput = document.getElementById('catalog-generic-name');
+    const rxCheckbox = document.getElementById('catalog-requires-prescription');
     const submitBtn = document.getElementById('btn-submit-catalog-med');
+
     const medName = nameInput.value.trim();
+    const genericName = genericInput ? genericInput.value.trim() : '';
+    const requiresPrescription = rxCheckbox ? rxCheckbox.checked : false;
+
     if (!medName || !currentPharmacy) return;
 
     if (submitBtn) {
@@ -829,7 +835,6 @@ async function handleAddCatalogMedicine(e) {
     try {
         const uploadedUrls = await uploadMedicinePhotoFilesToSupabase(stagedCatalogFiles);
 
-        // Prefer the row created by this pharmacy, or fall back to any existing row with the same name
         const existingMed =
             medicineCatalog.find((m) => (m.name || '').trim().toLowerCase() === medName.toLowerCase() && String(m.pharmacy_id) === String(currentPharmacy.id)) ||
             medicineCatalog.find((m) => (m.name || '').trim().toLowerCase() === medName.toLowerCase());
@@ -838,7 +843,11 @@ async function handleAddCatalogMedicine(e) {
             const mergedUrls = [...(Array.isArray(existingMed.image_urls) ? existingMed.image_urls : []), ...uploadedUrls];
             const { error } = await supabaseClient
                 .from('medicines')
-                .update({ image_urls: mergedUrls })
+                .update({
+                    image_urls: mergedUrls,
+                    generic_name: genericName || existingMed.generic_name || null,
+                    requires_prescription: requiresPrescription
+                })
                 .eq('id', existingMed.id);
             if (error) throw error;
         } else {
@@ -846,6 +855,8 @@ async function handleAddCatalogMedicine(e) {
                 .from('medicines')
                 .insert([{
                     name: medName,
+                    generic_name: genericName || null,
+                    requires_prescription: requiresPrescription,
                     pharmacy_id: currentPharmacy.id,
                     image_urls: uploadedUrls
                 }]);
@@ -853,8 +864,10 @@ async function handleAddCatalogMedicine(e) {
         }
 
         nameInput.value = '';
+        if (genericInput) genericInput.value = '';
+        if (rxCheckbox) rxCheckbox.checked = false;
         clearAllStagedCatalogPhotos();
-        showToast(`"${medName}" saved to your catalog with ${uploadedUrls.length} photo(s)!`);
+        showToast(`"${medName}" saved (${requiresPrescription ? 'Rx Required' : 'OTC'}) with ${uploadedUrls.length} photo(s)!`);
         await refreshAllAdminData();
     } catch (err) {
         showToast(err.message || 'Failed to save medicine.', 'error');
@@ -864,6 +877,200 @@ async function handleAddCatalogMedicine(e) {
             submitBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Add to Medicine Catalog';
         }
     }
+}
+
+async function toggleMedicinePrescriptionRequirement(encodedMedName, currentStatus) {
+    const medName = decodeURIComponent(encodedMedName);
+    const newStatus = !currentStatus;
+
+    const matchingRows = medicineCatalog.filter(
+        (m) => (m.name || '').trim().toLowerCase() === medName.toLowerCase()
+    );
+
+    try {
+        if (matchingRows.length > 0) {
+            for (const row of matchingRows) {
+                const { error } = await supabaseClient
+                    .from('medicines')
+                    .update({ requires_prescription: newStatus })
+                    .eq('id', row.id);
+                if (error) throw error;
+            }
+        } else {
+            const { error } = await supabaseClient
+                .from('medicines')
+                .insert([{
+                    name: medName,
+                    pharmacy_id: currentPharmacy.id,
+                    requires_prescription: newStatus,
+                    image_urls: []
+                }]);
+            if (error) throw error;
+        }
+
+        showToast(`Updated "${medName}" to ${newStatus ? 'Prescription Required (Rx)' : 'Over-the-Counter (OTC)'}.`);
+        await refreshAllAdminData();
+    } catch (err) {
+        showToast(err.message || 'Failed to update prescription requirement.', 'error');
+    }
+}
+
+function renderCatalogTable() {
+    const tbody = document.getElementById('catalog-stock-tbody');
+    tbody.innerHTML = '';
+
+    const medMap = new Map();
+
+    medicineCatalog.forEach((m) => {
+        const rawName = (m.name || '').trim();
+        if (!rawName) return;
+        const key = rawName.toLowerCase();
+        const isMine = String(m.pharmacy_id) === String(currentPharmacy.id);
+        const urls = Array.isArray(m.image_urls) ? m.image_urls : [];
+
+        if (!medMap.has(key)) {
+            medMap.set(key, {
+                name: rawName,
+                generic_name: m.generic_name || '',
+                requires_prescription: Boolean(m.requires_prescription),
+                isOwnPharmacy: isMine,
+                photos: [...urls]
+            });
+        } else {
+            const entry = medMap.get(key);
+            if (isMine) entry.isOwnPharmacy = true;
+            if (!entry.generic_name && m.generic_name) entry.generic_name = m.generic_name;
+            if (m.requires_prescription) entry.requires_prescription = true;
+            entry.photos = [...new Set([...entry.photos, ...urls])];
+        }
+    });
+
+    grnBatches.forEach((b) => {
+        const rawName = (b.medicine_name || '').trim();
+        if (!rawName) return;
+        const key = rawName.toLowerCase();
+        if (!medMap.has(key)) {
+            medMap.set(key, {
+                name: rawName,
+                generic_name: '',
+                requires_prescription: false,
+                isOwnPharmacy: true,
+                photos: []
+            });
+        } else {
+            medMap.get(key).isOwnPharmacy = true;
+        }
+    });
+
+    const allItems = Array.from(medMap.values());
+    if (allItems.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#64748b;">No medicines registered in catalog yet.</td></tr>`;
+        return;
+    }
+
+    allItems.sort((a, b) => {
+        if (a.isOwnPharmacy !== b.isOwnPharmacy) return a.isOwnPharmacy ? -1 : 1;
+        return a.name.localeCompare(b.name);
+    });
+
+    let renderedOwnHeader = false;
+    let renderedOtherHeader = false;
+
+    allItems.forEach((item) => {
+        const medName = item.name;
+
+        if (item.isOwnPharmacy && !renderedOwnHeader) {
+            renderedOwnHeader = true;
+            const headerTr = document.createElement('tr');
+            headerTr.innerHTML = `
+                <td colspan="7" style="background:#f0fdf4; color:#166534; font-weight:800; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.5px; padding:10px 16px; border-top:2px solid #bbf7d0; border-bottom:1px solid #bbf7d0;">
+                    <i class="fa-solid fa-house-medical-circle-check" style="margin-right:6px;"></i> Medicines Added / Stocked by ${escapeHtml(currentPharmacy.pharmacy_name)}
+                </td>
+            `;
+            tbody.appendChild(headerTr);
+        }
+
+        if (!item.isOwnPharmacy && !renderedOtherHeader) {
+            renderedOtherHeader = true;
+            const headerTr = document.createElement('tr');
+            headerTr.innerHTML = `
+                <td colspan="7" style="background:#f8fafc; color:#475569; font-weight:800; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.5px; padding:10px 16px; border-top:2px solid #cbd5e1; border-bottom:1px solid #e2e8f0;">
+                    <i class="fa-solid fa-globe" style="margin-right:6px; color:#0284c7;"></i> Other Medicines in Global Catalog 
+                </td>
+            `;
+            tbody.appendChild(headerTr);
+        }
+
+        const matchingBatches = grnBatches.filter(
+            (b) => (b.medicine_name || '').toLowerCase() === medName.toLowerCase() && b.current_quantity > 0
+        );
+        const totalQty = matchingBatches.reduce((sum, b) => sum + Number(b.current_quantity || 0), 0);
+        const avgPrice = matchingBatches.length > 0
+            ? matchingBatches.reduce((sum, b) => sum + Number(b.selling_price || 0), 0) / matchingBatches.length
+            : 0;
+
+        const statusBadge = totalQty > 50
+            ? '<span class="badge badge-success">Healthy Stock</span>'
+            : totalQty > 0
+            ? '<span class="badge badge-warning">Low Stock</span>'
+            : '<span class="badge badge-danger">No Local Stock</span>';
+
+        const ownershipBadge = item.isOwnPharmacy
+            ? `<span class="badge badge-success" style="font-size:0.68rem; margin-left:8px;"><i class="fa-solid fa-store"></i> Your Pharmacy</span>`
+            : `<span class="badge badge-info" style="font-size:0.68rem; margin-left:8px; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;"><i class="fa-solid fa-globe"></i> Other Pharmacy</span>`;
+
+        const encodedName = encodeURIComponent(medName);
+
+        const rxBadgeHtml = item.requires_prescription
+            ? `<button type="button" onclick="toggleMedicinePrescriptionRequirement('${encodedName}', true)" title="Click to switch to OTC" style="background:#ffe4e6; color:#be123c; border:1px solid #fda4af; padding:5px 10px; border-radius:999px; font-size:0.74rem; font-weight:800; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+                <i class="fa-solid fa-file-prescription"></i> Rx Required
+               </button>`
+            : `<button type="button" onclick="toggleMedicinePrescriptionRequirement('${encodedName}', false)" title="Click to require Prescription" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; padding:5px 10px; border-radius:999px; font-size:0.74rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+                <i class="fa-solid fa-circle-check" style="color:#10b981;"></i> OTC (No Rx)
+               </button>`;
+
+        const photosHtml = item.photos.map((url) => {
+            const encodedUrl = encodeURIComponent(url);
+            return `
+                <div style="position:relative; width:44px; height:44px; border-radius:8px; overflow:hidden; border:1px solid #cbd5e1; background:#fff; flex-shrink:0;">
+                    <img src="${escapeHtml(url)}" alt="${escapeHtml(medName)}" style="width:100%; height:100%; object-fit:cover;">
+                    <button type="button" onclick="removeMedicinePhotoFromCatalog('${encodedName}', '${encodedUrl}')" title="Remove Photo"
+                        style="position:absolute; top:2px; right:2px; width:16px; height:16px; border-radius:50%; background:rgba(239,68,68,0.95); color:#fff; border:none; font-size:9px; cursor:pointer; display:flex; align-items:center; justify-content:center;">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            `;
+        }).join('');
+
+        const tr = document.createElement('tr');
+        if (!item.isOwnPharmacy) {
+            tr.style.backgroundColor = '#fcfcfd';
+        }
+
+        tr.innerHTML = `
+            <td>
+                <div style="display:flex; align-items:center; flex-wrap:wrap; gap:4px;">
+                    <strong>${escapeHtml(medName)}</strong>
+                    ${ownershipBadge}
+                </div>
+                ${item.generic_name ? `<small style="display:block; color:#0284c7; font-weight:700; margin-top:3px;"><i class="fa-solid fa-dna"></i> Generic: ${escapeHtml(item.generic_name)}</small>` : `<small style="display:block; color:#94a3b8; margin-top:2px;">Generic name not set</small>`}
+            </td>
+            <td>${rxBadgeHtml}</td>
+            <td>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    ${photosHtml || '<span style="font-size:0.75rem; color:#94a3b8;">No photos</span>'}
+                    <button type="button" class="btn btn-outline" style="padding:5px 10px; font-size:0.75rem;" onclick="triggerAddPhotosForMedicine('${encodedName}')">
+                        <i class="fa-solid fa-camera"></i> + Add Photos
+                    </button>
+                </div>
+            </td>
+            <td>${matchingBatches.length} Batches</td>
+            <td><strong>${totalQty}</strong> Units</td>
+            <td>LKR ${formatCurrency(avgPrice)}</td>
+            <td>${statusBadge}</td>
+        `;
+        tbody.appendChild(tr);
+    });
 }
 
 // Triggered when Pharmacy Owner clicks "+ Add Photos" on any row in the catalog table
@@ -949,153 +1156,6 @@ async function removeMedicinePhotoFromCatalog(encodedMedName, encodedPhotoUrl) {
     } catch (err) {
         showToast(err.message || 'Could not remove photo.', 'error');
     }
-}
-
-function renderCatalogTable() {
-    const tbody = document.getElementById('catalog-stock-tbody');
-    tbody.innerHTML = '';
-
-    // Map unique medicine names (case-insensitive) so duplicates across pharmacies merge cleanly
-    const medMap = new Map();
-
-    medicineCatalog.forEach((m) => {
-        const rawName = (m.name || '').trim();
-        if (!rawName) return;
-        const key = rawName.toLowerCase();
-        const isMine = String(m.pharmacy_id) === String(currentPharmacy.id);
-        const urls = Array.isArray(m.image_urls) ? m.image_urls : [];
-
-        if (!medMap.has(key)) {
-            medMap.set(key, {
-                name: rawName,
-                isOwnPharmacy: isMine,
-                photos: [...urls]
-            });
-        } else {
-            const entry = medMap.get(key);
-            if (isMine) entry.isOwnPharmacy = true;
-            entry.photos = [...new Set([...entry.photos, ...urls])];
-        }
-    });
-
-    // Also include any medicine from this pharmacy's GRN stock
-    grnBatches.forEach((b) => {
-        const rawName = (b.medicine_name || '').trim();
-        if (!rawName) return;
-        const key = rawName.toLowerCase();
-        if (!medMap.has(key)) {
-            medMap.set(key, {
-                name: rawName,
-                isOwnPharmacy: true,
-                photos: []
-            });
-        } else {
-            medMap.get(key).isOwnPharmacy = true;
-        }
-    });
-
-    const allItems = Array.from(medMap.values());
-    if (allItems.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#64748b;">No medicines registered in catalog yet.</td></tr>`;
-        return;
-    }
-
-    // Sort: 1) Medicines added/stocked by THIS pharmacy first, 2) Other pharmacies' medicines second
-    allItems.sort((a, b) => {
-        if (a.isOwnPharmacy !== b.isOwnPharmacy) return a.isOwnPharmacy ? -1 : 1;
-        return a.name.localeCompare(b.name);
-    });
-
-    let renderedOwnHeader = false;
-    let renderedOtherHeader = false;
-
-    allItems.forEach((item) => {
-        const medName = item.name;
-
-        // Section Divider 1: Added / Stocked by Your Pharmacy
-        if (item.isOwnPharmacy && !renderedOwnHeader) {
-            renderedOwnHeader = true;
-            const headerTr = document.createElement('tr');
-            headerTr.innerHTML = `
-                <td colspan="6" style="background:#f0fdf4; color:#166534; font-weight:800; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.5px; padding:10px 16px; border-top:2px solid #bbf7d0; border-bottom:1px solid #bbf7d0;">
-                    <i class="fa-solid fa-House-medical-circle-check" style="margin-right:6px;"></i> Medicines Added / Stocked by ${escapeHtml(currentPharmacy.pharmacy_name)}
-                </td>
-            `;
-            tbody.appendChild(headerTr);
-        }
-
-        // Section Divider 2: Other Medicines in Global Catalog
-        if (!item.isOwnPharmacy && !renderedOtherHeader) {
-            renderedOtherHeader = true;
-            const headerTr = document.createElement('tr');
-            headerTr.innerHTML = `
-                <td colspan="6" style="background:#f8fafc; color:#475569; font-weight:800; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.5px; padding:10px 16px; border-top:2px solid #cbd5e1; border-bottom:1px solid #e2e8f0;">
-                    <i class="fa-solid fa-globe" style="margin-right:6px; color:#0284c7;"></i> Other Medicines in Global Catalog 
-                </td>
-            `;
-            tbody.appendChild(headerTr);
-        }
-
-        const matchingBatches = grnBatches.filter(
-            (b) => (b.medicine_name || '').toLowerCase() === medName.toLowerCase() && b.current_quantity > 0
-        );
-        const totalQty = matchingBatches.reduce((sum, b) => sum + Number(b.current_quantity || 0), 0);
-        const avgPrice = matchingBatches.length > 0
-            ? matchingBatches.reduce((sum, b) => sum + Number(b.selling_price || 0), 0) / matchingBatches.length
-            : 0;
-
-        const statusBadge = totalQty > 50
-            ? '<span class="badge badge-success">Healthy Stock</span>'
-            : totalQty > 0
-            ? '<span class="badge badge-warning">Low Stock</span>'
-            : '<span class="badge badge-danger">No Local Stock</span>';
-
-        const ownershipBadge = item.isOwnPharmacy
-            ? `<span class="badge badge-success" style="font-size:0.68rem; margin-left:8px;"><i class="fa-solid fa-store"></i> Your Pharmacy</span>`
-            : `<span class="badge badge-info" style="font-size:0.68rem; margin-left:8px; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;"><i class="fa-solid fa-globe"></i> Other Pharmacy</span>`;
-
-        const encodedName = encodeURIComponent(medName);
-
-        const photosHtml = item.photos.map((url) => {
-            const encodedUrl = encodeURIComponent(url);
-            return `
-                <div style="position:relative; width:44px; height:44px; border-radius:8px; overflow:hidden; border:1px solid #cbd5e1; background:#fff; flex-shrink:0;">
-                    <img src="${escapeHtml(url)}" alt="${escapeHtml(medName)}" style="width:100%; height:100%; object-fit:cover;">
-                    <button type="button" onclick="removeMedicinePhotoFromCatalog('${encodedName}', '${encodedUrl}')" title="Remove Photo"
-                        style="position:absolute; top:2px; right:2px; width:16px; height:16px; border-radius:50%; background:rgba(239,68,68,0.95); color:#fff; border:none; font-size:9px; cursor:pointer; display:flex; align-items:center; justify-content:center;">
-                        <i class="fa-solid fa-xmark"></i>
-                    </button>
-                </div>
-            `;
-        }).join('');
-
-        const tr = document.createElement('tr');
-        if (!item.isOwnPharmacy) {
-            tr.style.backgroundColor = '#fcfcfd';
-        }
-
-        tr.innerHTML = `
-            <td>
-                <div style="display:flex; align-items:center; flex-wrap:wrap; gap:4px;">
-                    <strong>${escapeHtml(medName)}</strong>
-                    ${ownershipBadge}
-                </div>
-            </td>
-            <td>
-                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                    ${photosHtml || '<span style="font-size:0.75rem; color:#94a3b8;">No photos</span>'}
-                    <button type="button" class="btn btn-outline" style="padding:5px 10px; font-size:0.75rem;" onclick="triggerAddPhotosForMedicine('${encodedName}')">
-                        <i class="fa-solid fa-camera"></i> + Add Photos
-                    </button>
-                </div>
-            </td>
-            <td>${matchingBatches.length} Batches</td>
-            <td><strong>${totalQty}</strong> Units</td>
-            <td>LKR ${formatCurrency(avgPrice)}</td>
-            <td>${statusBadge}</td>
-        `;
-        tbody.appendChild(tr);
-    });
 }
 
 // ==================== UI NAVIGATION & HELPERS ====================

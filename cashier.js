@@ -257,8 +257,8 @@ function renderOnlineOrdersReviewerAndTable() {
         reviewerBox.innerHTML = `
             <div style="text-align:center; padding:32px 20px; background:#f8fafc; border-radius:14px; border:1px dashed #cbd5e1; color:#15803d;">
                 <i class="fa-solid fa-circle-check" style="font-size:2rem; margin-bottom:8px;"></i>
-                <h4 style="margin:0; font-size:1rem;">All Caught Up! Zero Pending Bank Transfers in Queue</h4>
-                <p style="font-size:0.84rem; color:#64748b; margin-top:4px;">When a customer uploads a bank receipt on MediRadar, it will appear here immediately for one-by-one verification.</p>
+                <h4 style="margin:0; font-size:1rem;">All Caught Up! Zero Pending Orders in Queue</h4>
+                <p style="font-size:0.84rem; color:#64748b; margin-top:4px;">When a customer uploads a bank receipt or medical prescription on MediRadar, it will appear here immediately for one-by-one verification.</p>
             </div>
         `;
     } else {
@@ -273,40 +273,60 @@ function renderOnlineOrdersReviewerAndTable() {
             </div>
         `).join('');
 
+        // 1. Payment Receipt Preview
         const receiptPreviewHtml = order.receipt_image_url
             ? `
                 <div style="text-align:center;">
-                    <a href="${escapeHtml(order.receipt_image_url)}" target="_blank" title="Click to open full-size receipt in new tab">
+                    <a href="${escapeHtml(order.receipt_image_url)}" target="_blank" title="Click to open full-size payment receipt">
                         <img src="${escapeHtml(order.receipt_image_url)}" alt="Bank Transfer Receipt"
-                             style="max-height:280px; width:auto; max-width:100%; border-radius:12px; border:2px solid #cbd5e1; object-fit:contain; margin:0 auto; display:block;">
+                             style="max-height:220px; width:auto; max-width:100%; border-radius:10px; border:2px solid #cbd5e1; object-fit:contain; margin:0 auto; display:block;">
                     </a>
-                    <a href="${escapeHtml(order.receipt_image_url)}" target="_blank" style="display:inline-block; margin-top:8px; font-size:0.8rem; font-weight:700; color:var(--brand-primary);">
-                        <i class="fa-solid fa-magnifying-glass-plus"></i> Open Full-Size Receipt Image
+                    <a href="${escapeHtml(order.receipt_image_url)}" target="_blank" style="display:inline-block; margin-top:8px; font-size:0.78rem; font-weight:700; color:var(--brand-primary);">
+                        <i class="fa-solid fa-magnifying-glass-plus"></i> Open Full-Size Payment Receipt
                     </a>
                 </div>
             `
-            : `<div style="padding:40px; text-align:center; background:#f1f5f9; border-radius:12px; color:#64748b;">No receipt image attached (${escapeHtml(order.payment_method)})</div>`;
+            : `<div style="padding:28px 16px; text-align:center; background:#f1f5f9; border-radius:10px; color:#64748b; font-size:0.82rem;">No bank receipt attached (${escapeHtml(order.payment_method || 'N/A')})</div>`;
+
+        // 2. Uploaded Prescription (Rx) Preview
+        const prescriptionPreviewHtml = order.prescription_image_url
+            ? `
+                <div style="text-align:center;">
+                    <a href="${escapeHtml(order.prescription_image_url)}" target="_blank" title="Click to open full-size doctor prescription">
+                        <img src="${escapeHtml(order.prescription_image_url)}" alt="Uploaded Doctor Prescription"
+                             style="max-height:220px; width:auto; max-width:100%; border-radius:10px; border:2px solid #fda4af; object-fit:contain; margin:0 auto; display:block;">
+                    </a>
+                    <a href="${escapeHtml(order.prescription_image_url)}" target="_blank" style="display:inline-block; margin-top:8px; font-size:0.78rem; font-weight:800; color:#e11d48;">
+                        <i class="fa-solid fa-file-medical"></i> Open Full-Size Prescription (Rx)
+                    </a>
+                </div>
+            `
+            : `<div style="padding:28px 16px; text-align:center; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:10px; color:#94a3b8; font-size:0.82rem;">No prescription uploaded for this order</div>`;
 
         reviewerBox.innerHTML = `
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:20px; background:#f8fafc; padding:20px; border-radius:16px; border:1px solid #e2e8f0;">
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:20px; background:#f8fafc; padding:20px; border-radius:16px; border:1px solid #e2e8f0;">
                 
                 <!-- Left: Order & Customer Details -->
                 <div style="display:flex; flex-direction:column; justify-content:space-between; gap:14px;">
                     <div>
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                            <span class="badge badge-warning" style="font-size:0.8rem;">Awaiting Verification</span>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:6px;">
+                            <div style="display:flex; gap:6px; align-items:center;">
+                                <span class="badge badge-warning" style="font-size:0.8rem;">Awaiting Verification</span>
+                                ${order.prescription_image_url ? `<span class="badge badge-danger" style="font-size:0.76rem; background:#ffe4e6; color:#be123c; border:1px solid #fda4af;"><i class="fa-solid fa-file-prescription"></i> Rx Attached</span>` : ''}
+                            </div>
                             <code style="font-size:0.95rem; font-weight:800;">${escapeHtml(order.invoice_no || order.id.slice(0, 8))}</code>
                         </div>
 
                         <h3 style="margin:0 0 4px 0; font-size:1.15rem;">Customer: ${escapeHtml(order.customer_name || 'MediRadar Customer')}</h3>
                         <p style="margin:0; font-size:0.85rem; color:#475569;">
-                            <i class="fa-solid fa-phone"></i> ${escapeHtml(order.customer_phone || '-')} &nbsp;|&nbsp;
+                            <i class="fa-solid fa-phone"></i> ${escapeHtml(order.customer_phone || '-')}  | 
+                            <i class="fa-solid fa-truck-fast"></i> ${escapeHtml(order.fulfillment_type || 'DELIVERY')}  | 
                             <i class="fa-solid fa-location-dot"></i> ${escapeHtml(order.delivery_address || '-')}
                         </p>
 
                         <div style="margin-top:12px; padding:12px; background:#fff; border-radius:12px; border:1px solid #e2e8f0;">
                             <div style="font-size:0.76rem; text-transform:uppercase; font-weight:800; color:#64748b; margin-bottom:4px;">Bank Transfer Details Submitted</div>
-                            <div style="font-size:0.88rem;"><strong>Sending Bank:</strong> ${escapeHtml(order.sending_bank || 'Bank Transfer')}</div>
+                            <div style="font-size:0.88rem;"><strong>Sending Bank:</strong> ${escapeHtml(order.sending_bank || order.payment_method || 'Bank Transfer')}</div>
                             <div style="font-size:0.88rem;"><strong>Transfer Ref / Slip #:</strong> <code style="color:#0f766e; font-weight:800;">${escapeHtml(order.bank_reference || 'N/A')}</code></div>
                         </div>
 
@@ -322,24 +342,37 @@ function renderOnlineOrdersReviewerAndTable() {
 
                     <!-- Accept / Reject Controls -->
                     <div style="display:flex; flex-direction:column; gap:10px;">
-                        <input type="text" id="reject-reason-input" class="input-control" placeholder="Optional rejection reason (if rejecting slip)...">
+                        <input type="text" id="reject-reason-input" class="input-control" placeholder="Optional rejection reason (e.g. Invalid prescription or unclear bank slip)...">
                         <div style="display:flex; gap:10px; flex-wrap:wrap;">
                             <button type="button" id="btn-accept-order" class="btn btn-brand" style="flex:1;" onclick="handleCashierOrderDecision('${order.id}', 'Accepted')">
-                                <i class="fa-solid fa-circle-check"></i> Accept Payment & Dispense Stock
+                                <i class="fa-solid fa-circle-check"></i> Approve Rx / Payment & Dispense
                             </button>
                             <button type="button" id="btn-reject-order" class="btn btn-outline" style="color:var(--danger); border-color:var(--danger);" onclick="handleCashierOrderDecision('${order.id}', 'Rejected')">
-                                <i class="fa-solid fa-circle-xmark"></i> Reject Slip
+                                <i class="fa-solid fa-circle-xmark"></i> Reject Order
                             </button>
                         </div>
                     </div>
                 </div>
 
-                <!-- Right: Uploaded Bank Slip Preview -->
-                <div style="display:flex; flex-direction:column; justify-content:center; background:#fff; padding:16px; border-radius:12px; border:1px solid #e2e8f0;">
-                    <div style="font-size:0.78rem; font-weight:800; text-transform:uppercase; color:#64748b; margin-bottom:10px; text-align:center;">
-                        <i class="fa-solid fa-file-invoice"></i> Customer Uploaded Bank Receipt Screenshot
+                <!-- Right: Side-by-Side Payment Receipt & Uploaded Prescription Previews -->
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px;">
+                    
+                    <!-- Card 1: Bank Receipt -->
+                    <div style="display:flex; flex-direction:column; justify-content:space-between; background:#fff; padding:14px; border-radius:12px; border:1px solid #e2e8f0;">
+                        <div style="font-size:0.76rem; font-weight:800; text-transform:uppercase; color:#0f766e; margin-bottom:10px; text-align:center; background:#f0fdfa; padding:6px; border-radius:8px;">
+                            <i class="fa-solid fa-file-invoice-dollar"></i> Payment Receipt Slip
+                        </div>
+                        ${receiptPreviewHtml}
                     </div>
-                    ${receiptPreviewHtml}
+
+                    <!-- Card 2: Doctor Prescription -->
+                    <div style="display:flex; flex-direction:column; justify-content:space-between; background:#fff; padding:14px; border-radius:12px; border:1px solid ${order.prescription_image_url ? '#fecdd3' : '#e2e8f0'};">
+                        <div style="font-size:0.76rem; font-weight:800; text-transform:uppercase; color:#be123c; margin-bottom:10px; text-align:center; background:#fff1f2; padding:6px; border-radius:8px;">
+                            <i class="fa-solid fa-file-prescription"></i> Uploaded Prescription (Rx)
+                        </div>
+                        ${prescriptionPreviewHtml}
+                    </div>
+
                 </div>
 
             </div>
@@ -373,7 +406,11 @@ function renderOnlineOrdersReviewerAndTable() {
         }
 
         const slipLink = o.receipt_image_url
-            ? `<a href="${escapeHtml(o.receipt_image_url)}" target="_blank" style="color:var(--brand-primary); font-weight:700; font-size:0.78rem; display:block;"><i class="fa-solid fa-image"></i> View Slip</a>`
+            ? `<a href="${escapeHtml(o.receipt_image_url)}" target="_blank" style="color:var(--brand-primary); font-weight:700; font-size:0.78rem; display:inline-block; margin-right:10px;"><i class="fa-solid fa-receipt"></i> View Payment Slip</a>`
+            : '';
+
+        const rxLink = o.prescription_image_url
+            ? `<a href="${escapeHtml(o.prescription_image_url)}" target="_blank" style="color:#e11d48; font-weight:800; font-size:0.78rem; display:inline-block;"><i class="fa-solid fa-file-prescription"></i> View Prescription (Rx)</a>`
             : '';
 
         const tr = document.createElement('tr');
@@ -388,7 +425,7 @@ function renderOnlineOrdersReviewerAndTable() {
             <td>
                 <strong>${escapeHtml(o.payment_method)}</strong>
                 <small style="display:block; color:#64748b;">${escapeHtml(o.bank_reference || '')}</small>
-                ${slipLink}
+                <div style="margin-top:4px;">${slipLink}${rxLink}</div>
             </td>
             <td><strong>LKR ${formatCurrency(o.total_amount)}</strong></td>
             <td>${statusHtml}</td>

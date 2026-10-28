@@ -386,7 +386,15 @@
                     </div>
                     <form id="add-medicine-catalog-form" style="display:flex; flex-direction:column; gap:14px;">
                         <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
-                            <input type="text" id="catalog-medicine-name" class="input-control" style="flex:1; min-width:260px;" required placeholder="e.g., Amoxicillin 500mg Capsules (BP)">
+                            <input type="text" id="catalog-medicine-name" class="input-control" style="flex:1.2; min-width:220px;" required placeholder="Brand / Medicine Name (e.g., Panadol 500mg)">
+                            
+                            <input type="text" id="catalog-generic-name" class="input-control" style="flex:1; min-width:200px;" placeholder="Generic Name (e.g., Paracetamol)">
+
+                            <!-- Prescription Required Toggle -->
+                            <label style="display:inline-flex; align-items:center; gap:8px; background:#fff1f2; border:1px solid #fecdd3; color:#be123c; padding:10px 14px; border-radius:10px; font-size:0.84rem; font-weight:700; cursor:pointer; margin:0; white-space:nowrap;">
+                                <input type="checkbox" id="catalog-requires-prescription" style="width:16px; height:16px; accent-color:#e11d48; cursor:pointer;">
+                                <span><i class="fa-solid fa-file-prescription"></i> Prescription Required (Rx)</span>
+                            </label>
                             
                             <!-- Multi-Photo Picker Button -->
                             <label for="catalog-medicine-photos" class="btn btn-outline" style="cursor:pointer; margin:0; display:inline-flex; align-items:center; gap:8px;">
@@ -426,7 +434,8 @@
                         <table class="data-table">
                             <thead>
                                 <tr>
-                                    <th>Medicine Name</th>
+                                    <th>Medicine & Generic Name</th>
+                                    <th>Prescription (Rx)</th>
                                     <th>Medicine Photos (Add / Remove)</th>
                                     <th>Active Batches in GRN</th>
                                     <th>Total Available Units</th>
