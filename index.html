@@ -346,39 +346,18 @@
                     <div class="form-grid-2">
                         <div class="form-group">
                             <label for="reg-pharmacy-name">Pharmacy Name *</label>
-                            <input 
-                                type="text" 
-                                id="reg-pharmacy-name" 
-                                name="organization" 
-                                autocomplete="organization" 
-                                required 
-                                placeholder="e.g., MediCare Central Pharmacy"
-                            >
+                            <input type="text" id="reg-pharmacy-name" name="organization" autocomplete="organization" required placeholder="e.g., MediCare Central Pharmacy">
                         </div>
                         <div class="form-group">
                             <label for="reg-license-no">NMRA / Pharmacy Reg. Number *</label>
-                            <input 
-                                type="text" 
-                                id="reg-license-no" 
-                                name="license_no" 
-                                autocomplete="off" 
-                                required 
-                                placeholder="e.g., PH-SL-2026-849"
-                            >
+                            <input type="text" id="reg-license-no" name="license_no" autocomplete="off" required placeholder="e.g., PH-SL-2026-849">
                         </div>
                     </div>
 
                     <div class="form-grid-2">
                         <div class="form-group">
                             <label for="reg-phone">Contact Number *</label>
-                            <input 
-                                type="tel" 
-                                id="reg-phone" 
-                                name="tel" 
-                                autocomplete="tel" 
-                                required 
-                                placeholder="e.g., +94 11 234 5678"
-                            >
+                            <input type="tel" id="reg-phone" name="tel" autocomplete="tel" required placeholder="e.g., +94 11 234 5678">
                         </div>
                         <div class="form-group">
                             <label for="reg-hours">Operating Hours *</label>
@@ -398,25 +377,11 @@
                     <div class="form-grid-2">
                         <div class="form-group">
                             <label for="reg-city">City / Town *</label>
-                            <input 
-                                type="text" 
-                                id="reg-city" 
-                                name="address-level2" 
-                                autocomplete="address-level2" 
-                                required 
-                                placeholder="e.g., Moratuwa"
-                            >
+                            <input type="text" id="reg-city" name="address-level2" autocomplete="address-level2" required placeholder="e.g., Moratuwa">
                         </div>
                         <div class="form-group">
                             <label for="reg-address">Street Address *</label>
-                            <input 
-                                type="text" 
-                                id="reg-address" 
-                                name="street-address" 
-                                autocomplete="street-address" 
-                                required 
-                                placeholder="e.g., No. 142, Galle Road"
-                            >
+                            <input type="text" id="reg-address" name="street-address" autocomplete="street-address" required placeholder="e.g., No. 142, Galle Road">
                         </div>
                     </div>
 
@@ -434,79 +399,66 @@
                         <button type="button" id="btn-detect-gps" class="btn-gps" onclick="detectLocation()">
                             <i class="fa-solid fa-location-crosshairs"></i> Detect Current GPS Location
                         </button>
-                        <small id="gps-status-text" class="gps-hint">
-                            You can click Detect GPS or type coordinates manually.
-                        </small>
+                        <small id="gps-status-text" class="gps-hint">You can click Detect GPS or type coordinates manually.</small>
                     </div>
 
                     <div class="form-group" style="margin-top: 14px;">
                         <label for="reg-image-url">Storefront / Cover Image URL (Optional)</label>
-                        <input 
-                            type="url" 
-                            id="reg-image-url" 
-                            name="image_url" 
-                            autocomplete="url" 
-                            placeholder="Leave blank to use default professional pharmacy image"
-                        >
+                        <input type="url" id="reg-image-url" name="image_url" autocomplete="url" placeholder="Leave blank to use default professional pharmacy image">
                     </div>
 
-                    <!-- 3. Master Admin Credentials -->
+                    <!-- NEW: 3. Legal Owner Credentials -->
                     <div class="form-section-title">
-                        <i class="fa-solid fa-user-lock"></i> Master Admin Credentials
+                        <i class="fa-solid fa-user-tie"></i> Pharmacy Proprietor / Owner Details
                     </div>
                     <div class="form-grid-2">
                         <div class="form-group">
-                            <label for="reg-admin-email">Admin Email *</label>
-                            <input 
-                                type="email" 
-                                id="reg-admin-email" 
-                                name="email" 
-                                autocomplete="email" 
-                                required 
-                                placeholder="admin@pharmacy.lk"
-                            >
+                            <label for="reg-owner-name">Owner Full Name *</label>
+                            <input type="text" id="reg-owner-name" name="owner_name" autocomplete="name" required placeholder="e.g., Kasun Perera">
                         </div>
+                        <div class="form-group">
+                            <label for="reg-owner-email">Owner Email Address *</label>
+                            <input type="email" id="reg-owner-email" name="owner_email" autocomplete="email" required placeholder="e.g., owner@pharmacy.lk">
+                        </div>
+                    </div>
+
+                    <!-- 4. Master Admin Credentials -->
+                    <div class="form-section-title" style="display: flex; justify-content: space-between; align-items: center;">
+                        <span><i class="fa-solid fa-user-shield"></i> System Admin Credentials</span>
+                        <label style="font-size: 11px; display: flex; align-items: center; gap: 6px; cursor: pointer; color: #0d9488;">
+                            <input type="checkbox" id="reg-same-as-owner" onchange="copyOwnerToAdmin()" style="width: auto;">
+                            Admin is same as Owner
+                        </label>
+                    </div>
+                    
+                    <div class="form-grid-2">
+                        <div class="form-group">
+                            <label for="reg-admin-name">Admin Full Name *</label>
+                            <input type="text" id="reg-admin-name" name="admin_name" required placeholder="e.g., Nimal Silva">
+                        </div>
+                        <div class="form-group">
+                            <label for="reg-admin-email">Admin Login Email *</label>
+                            <input type="email" id="reg-admin-email" name="email" required placeholder="admin@pharmacy.lk">
+                        </div>
+                    </div>
+
+                    <div class="form-grid-2">
                         <div class="form-group">
                             <label for="reg-admin-username">Admin Username *</label>
-                            <input 
-                                type="text" 
-                                id="reg-admin-username" 
-                                name="username" 
-                                autocomplete="username" 
-                                required 
-                                placeholder="e.g., medicare_admin"
-                            >
+                            <input type="text" id="reg-admin-username" name="username" required placeholder="e.g., medicare_admin">
                         </div>
-                    </div>
-
-                    <div class="form-grid-2">
                         <div class="form-group">
                             <label for="reg-admin-password">Admin Password *</label>
-                            <input 
-                                type="password" 
-                                id="reg-admin-password" 
-                                name="password" 
-                                autocomplete="new-password" 
-                                required 
-                                minlength="6" 
-                                placeholder="Min. 6 characters"
-                            >
-                        </div>
-                        <div class="form-group">
-                            <label for="reg-admin-confirm">Confirm Password *</label>
-                            <input 
-                                type="password" 
-                                id="reg-admin-confirm" 
-                                name="confirm_password" 
-                                autocomplete="new-password" 
-                                required 
-                                minlength="6" 
-                                placeholder="Re-enter password"
-                            >
+                            <input type="password" id="reg-admin-password" name="password" autocomplete="new-password" required minlength="6" placeholder="Min. 6 characters">
                         </div>
                     </div>
 
-                    <div class="form-actions">
+                    <div class="form-group">
+                        <label for="reg-admin-confirm">Confirm Password *</label>
+                        <input type="password" id="reg-admin-confirm" name="confirm_password" autocomplete="new-password" required minlength="6" placeholder="Re-enter password">
+                    </div>
+
+                    <div class="form-actions" style="margin-top: 24px;">
                         <button type="button" class="btn-secondary" onclick="navigateTo('home')">Cancel</button>
                         <button type="submit" id="btn-submit-register" class="btn-primary">
                             <i class="fa-solid fa-cloud-arrow-up"></i> Complete Registration

@@ -155,6 +155,11 @@ async function handleRegisterPharmacy(e) {
     const latitude = document.getElementById('reg-lat').value.trim() || '6.7951';
     const longitude = document.getElementById('reg-lng').value.trim() || '79.9009';
     const customImage = document.getElementById('reg-image-url').value.trim();
+    
+    // NEW OWNER FIELDS
+    const ownerName = document.getElementById('reg-owner-name').value.trim();
+    const ownerEmail = document.getElementById('reg-owner-email').value.trim();
+
     const adminEmail = document.getElementById('reg-admin-email').value.trim();
     const adminUsername = document.getElementById('reg-admin-username').value.trim();
     const adminPassword = document.getElementById('reg-admin-password').value;
@@ -185,10 +190,8 @@ async function handleRegisterPharmacy(e) {
             }
         });
 
-        if (authError) {
-            if (!authError.message.toLowerCase().includes('already registered')) {
-                throw new Error(`Supabase Auth Error: ${authError.message}`);
-            }
+        if (authError && !authError.message.toLowerCase().includes('already registered')) {
+            throw new Error(`Supabase Auth Error: ${authError.message}`);
         } else {
             authUserId = authData?.user?.id || null;
         }
@@ -205,6 +208,9 @@ async function handleRegisterPharmacy(e) {
                 latitude: latitude,
                 longitude: longitude,
                 image_url: customImage || randomStockImage,
+                owner_name: ownerName,
+                owner_email: ownerEmail,
+                admin_name: adminName,         // <-- ADD THIS LINE
                 admin_email: adminEmail,
                 admin_username: adminUsername,
                 admin_user_id: authUserId
@@ -212,9 +218,7 @@ async function handleRegisterPharmacy(e) {
             .select()
             .single();
 
-        if (dbError) {
-            throw new Error(`Database Table Error: ${dbError.message}`);
-        }
+        if (dbError) throw new Error(`Database Table Error: ${dbError.message}`);
 
         pharmaciesList.unshift(insertedRow);
         document.getElementById('register-pharmacy-form').reset();
@@ -223,7 +227,6 @@ async function handleRegisterPharmacy(e) {
         showToast(`${pharmacyName} successfully saved to database!`);
 
     } catch (err) {
-        console.error('Registration failed:', err);
         showFormError(errorBox, err.message);
         showToast(err.message, 'error');
     } finally {
@@ -543,4 +546,23 @@ function escapeHtml(str) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+}
+
+// Copies Owner Name and Email to Admin fields if the checkbox is ticked
+function copyOwnerToAdmin() {
+    const isChecked = document.getElementById('reg-same-as-owner').checked;
+    const adminName = document.getElementById('reg-admin-name').value.trim(); // <-- ADD THIS LINE
+    const adminEmail = document.getElementById('reg-admin-email').value.trim();
+    const adminUsername = document.getElementById('reg-admin-username').value.trim();
+    
+    if (isChecked) {
+        const ownerNameVal = document.getElementById('reg-owner-name').value;
+        adminName.value = ownerNameVal;
+        adminEmail.value = document.getElementById('reg-owner-email').value;
+        adminUsername.value = ownerNameVal ? ownerNameVal.split(' ')[0].toLowerCase() + '_admin' : '';
+    } else {
+        adminName.value = '';
+        adminEmail.value = '';
+        adminUsername.value = '';
+    }
 }
