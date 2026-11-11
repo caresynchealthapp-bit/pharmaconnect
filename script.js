@@ -160,7 +160,11 @@ async function handleRegisterPharmacy(e) {
     const ownerName = document.getElementById('reg-owner-name').value.trim();
     const ownerEmail = document.getElementById('reg-owner-email').value.trim();
 
-    const adminEmail = document.getElementById('reg-admin-email').value.trim();
+    // Smart check: If toggle is ON, forcefully use Owner details. If OFF, read the Admin fields.
+    const isSameAsOwner = document.getElementById('reg-same-as-owner').checked;
+    const adminName = isSameAsOwner ? ownerName : document.getElementById('reg-admin-name').value.trim();
+    const adminEmail = isSameAsOwner ? ownerEmail : document.getElementById('reg-admin-email').value.trim();
+    
     const adminUsername = document.getElementById('reg-admin-username').value.trim();
     const adminPassword = document.getElementById('reg-admin-password').value;
     const confirmPassword = document.getElementById('reg-admin-confirm').value;
@@ -548,21 +552,33 @@ function escapeHtml(str) {
         .replace(/"/g, '&quot;');
 }
 
-// Copies Owner Name and Email to Admin fields if the checkbox is ticked
+// Hides the Admin Name/Email fields and generates a username
 function copyOwnerToAdmin() {
     const isChecked = document.getElementById('reg-same-as-owner').checked;
-    const adminName = document.getElementById('reg-admin-name').value.trim(); // <-- ADD THIS LINE
-    const adminEmail = document.getElementById('reg-admin-email').value.trim();
-    const adminUsername = document.getElementById('reg-admin-username').value.trim();
+    const adminGroup = document.getElementById('admin-name-email-group');
+    const adminName = document.getElementById('reg-admin-name');
+    const adminEmail = document.getElementById('reg-admin-email');
+    const adminUsername = document.getElementById('reg-admin-username');
     
     if (isChecked) {
-        const ownerNameVal = document.getElementById('reg-owner-name').value;
-        adminName.value = ownerNameVal;
-        adminEmail.value = document.getElementById('reg-owner-email').value;
-        adminUsername.value = ownerNameVal ? ownerNameVal.split(' ')[0].toLowerCase() + '_admin' : '';
+        // Visually hide the fields
+        adminGroup.style.display = 'none';
+        
+        // Remove 'required' so the browser doesn't block the form submission
+        adminName.removeAttribute('required');
+        adminEmail.removeAttribute('required');
+
+        // Auto-generate a suggested username from the Owner's Name
+        const ownerNameVal = document.getElementById('reg-owner-name').value.trim();
+        if (ownerNameVal && !adminUsername.value) {
+            adminUsername.value = ownerNameVal.split(' ')[0].toLowerCase() + '_admin';
+        }
     } else {
-        adminName.value = '';
-        adminEmail.value = '';
-        adminUsername.value = '';
+        // Show the fields again if untoggled
+        adminGroup.style.display = 'grid'; 
+        
+        // Make them required again
+        adminName.setAttribute('required', 'true');
+        adminEmail.setAttribute('required', 'true');
     }
 }
