@@ -228,6 +228,40 @@ async function handleSaveDeliveryFees(e) {
     } finally {
         if (btn) btn.disabled = false;
     }
+
+    // Inside your Save Delivery Prices function in PharmaConnect admin.html:
+    const normalFee = parseFloat(document.getElementById('normalDeliveryFeeInput').value || 250);
+    const samedayFee = parseFloat(document.getElementById('samedayDeliveryFeeInput').value || 500);
+
+    const allowNormal = document.getElementById('toggleNormalDelivery').checked;
+    const allowSameday = document.getElementById('toggleSamedayDelivery').checked;
+    const allowPickup = document.getElementById('toggleSelfPickup').checked;
+    const allowBank = document.getElementById('togglePayBank').checked;
+    const allowCard = document.getElementById('togglePayCard').checked;
+    const allowCod = document.getElementById('togglePayCod').checked;
+
+    if (!allowNormal && !allowSameday && !allowPickup) {
+        alert("Please keep at least one Delivery or Pickup method enabled!");
+        return;
+    }
+    if (!allowBank && !allowCard && !allowCod) {
+        alert("Please keep at least one Payment Method enabled!");
+        return;
+    }
+
+    const { error } = await supabaseClient
+        .from('pharmacies')
+        .update({
+            normal_delivery_fee: normalFee,
+            sameday_delivery_fee: samedayFee,
+            allow_normal_delivery: allowNormal,
+            allow_sameday_delivery: allowSameday,
+            allow_pickup: allowPickup,
+            allow_bank_transfer: allowBank,
+            allow_card_payment: allowCard,
+            allow_cod: allowCod
+        })
+        .eq('id', currentPharmacyId);
 }
 
 // ==================== BANKING DETAILS MANAGEMENT (`pharmacy_banks`) ====================

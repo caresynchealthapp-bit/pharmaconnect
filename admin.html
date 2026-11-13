@@ -268,6 +268,48 @@
                                 <label for="sameday-delivery-fee-input"><i class="fa-solid fa-bolt" style="color:#f59e0b;"></i> Same-Day Express Fee (LKR) *</label>
                                 <input type="number" id="sameday-delivery-fee-input" class="input-control" min="0" step="0.01" required placeholder="e.g., 500.00">
                             </div>
+                            <!-- GRAPHICAL FULFILLMENT & PAYMENT AVAILABILITY TOGGLES (PHARMACONNECT ADMIN.HTML) -->
+                            <div style="margin-top: 20px; padding-top: 18px; border-top: 1px solid #e2e8f0;">
+                                <h4 style="font-size: 13px; font-weight: 800; color: #0f172a; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">
+                                    <i class="fa-solid fa-sliders" style="color: #0d9488; margin-right: 6px;"></i> Customer Fulfillment & Payment Options (Click to Enable / Disable)
+                                </h4>
+
+                                <!-- 3 Fulfillment Toggles -->
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 14px;">
+                                    <label style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:#f8fafc; border:2px solid #e2e8f0; border-radius:12px; cursor:pointer;">
+                                        <span style="font-size:12px; font-weight:700; color:#1e293b;"><i class="fa-solid fa-truck" style="color:#0d9488; margin-right:6px;"></i>Normal Delivery</span>
+                                        <input type="checkbox" id="toggleNormalDelivery" checked style="width:18px; height:18px; accent-color:#0d9488;">
+                                    </label>
+
+                                    <label style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:#f8fafc; border:2px solid #e2e8f0; border-radius:12px; cursor:pointer;">
+                                        <span style="font-size:12px; font-weight:700; color:#1e293b;"><i class="fa-solid fa-bolt" style="color:#f59e0b; margin-right:6px;"></i>Same-Day Express</span>
+                                        <input type="checkbox" id="toggleSamedayDelivery" checked style="width:18px; height:18px; accent-color:#f59e0b;">
+                                    </label>
+
+                                    <label style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:#f8fafc; border:2px solid #e2e8f0; border-radius:12px; cursor:pointer;">
+                                        <span style="font-size:12px; font-weight:700; color:#1e293b;"><i class="fa-solid fa-store" style="color:#10b981; margin-right:6px;"></i>Self-Pickup at Counter</span>
+                                        <input type="checkbox" id="toggleSelfPickup" checked style="width:18px; height:18px; accent-color:#10b981;">
+                                    </label>
+                                </div>
+
+                                <!-- 3 Payment Method Toggles -->
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                                    <label style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:#f0fdfa; border:2px solid #99f6e4; border-radius:12px; cursor:pointer;">
+                                        <span style="font-size:12px; font-weight:800; color:#0f766e;"><i class="fa-solid fa-building-columns" style="margin-right:6px;"></i>Bank Transfer</span>
+                                        <input type="checkbox" id="togglePayBank" checked style="width:18px; height:18px; accent-color:#0d9488;">
+                                    </label>
+
+                                    <label style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:#eff6ff; border:2px solid #bfdbfe; border-radius:12px; cursor:pointer;">
+                                        <span style="font-size:12px; font-weight:800; color:#1d4ed8;"><i class="fa-regular fa-credit-card" style="margin-right:6px;"></i>Card Payment</span>
+                                        <input type="checkbox" id="togglePayCard" checked style="width:18px; height:18px; accent-color:#2563eb;">
+                                    </label>
+
+                                    <label style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:#fefce8; border:2px solid #fde047; border-radius:12px; cursor:pointer;">
+                                        <span style="font-size:12px; font-weight:800; color:#a16207;"><i class="fa-solid fa-hand-holding-dollar" style="margin-right:6px;"></i>Cash on Delivery (COD)</span>
+                                        <input type="checkbox" id="togglePayCod" checked style="width:18px; height:18px; accent-color:#ca8a04;">
+                                    </label>
+                                </div>
+                            </div>
                             <div class="form-field" style="justify-content: flex-end;">
                                 <button type="submit" id="btn-save-delivery-fees" class="btn btn-brand">
                                     <i class="fa-solid fa-floppy-disk"></i> Save Delivery Prices
