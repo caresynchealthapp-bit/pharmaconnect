@@ -205,7 +205,7 @@ async function handleSaveDeliveryFees(e) {
     if (!currentPharmacy) return;
 
     const normalFee = parseFloat(document.getElementById('normalDeliveryFeeInput').value || 250);
-    const samedayFee = Math.max(0, parseFloat(document.getElementById('sameday-delivery-fee-input').value) || 0);
+    const samedayFee = parseFloat(document.getElementById('samedayDeliveryFeeInput').value || 500);
     const btn = document.getElementById('btn-save-delivery-fees');
     if (btn) btn.disabled = true;
 
