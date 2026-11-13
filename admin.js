@@ -114,6 +114,27 @@ async function loadTenantPharmacyDetails(pharmacyId) {
 
     const normalFeeInput = document.getElementById('normal-delivery-fee-input');
     const samedayFeeInput = document.getElementById('sameday-delivery-fee-input');
+
+    // Sync Fulfillment Toggles (Defaults to checked if missing from older DB rows)
+    const tNormal = document.getElementById('toggleNormalDelivery');
+    if (tNormal) tNormal.checked = currentPharmacy.allow_normal_delivery !== false;
+
+    const tSameday = document.getElementById('toggleSamedayDelivery');
+    if (tSameday) tSameday.checked = currentPharmacy.allow_sameday_delivery !== false;
+
+    const tPickup = document.getElementById('toggleSelfPickup');
+    if (tPickup) tPickup.checked = currentPharmacy.allow_pickup !== false;
+
+    // Sync Payment Method Toggles
+    const tBank = document.getElementById('togglePayBank');
+    if (tBank) tBank.checked = currentPharmacy.allow_bank_transfer !== false;
+
+    const tCard = document.getElementById('togglePayCard');
+    if (tCard) tCard.checked = currentPharmacy.allow_card_payment !== false;
+
+    const tCod = document.getElementById('togglePayCod');
+    if (tCod) tCod.checked = currentPharmacy.allow_cod !== false;
+    
     if (normalFeeInput) normalFeeInput.value = Number(data.normal_delivery_fee ?? 250).toFixed(2);
     if (samedayFeeInput) samedayFeeInput.value = Number(data.sameday_delivery_fee ?? 500).toFixed(2);
 
@@ -204,33 +225,11 @@ async function handleSaveDeliveryFees(e) {
     e.preventDefault();
     if (!currentPharmacy) return;
 
+    // 1. Get Fee Values
     const normalFee = Math.max(0, parseFloat(document.getElementById('normal-delivery-fee-input').value) || 0);
     const samedayFee = Math.max(0, parseFloat(document.getElementById('sameday-delivery-fee-input').value) || 0);
-    const btn = document.getElementById('btn-save-delivery-fees');
-    if (btn) btn.disabled = true;
 
-    try {
-        const { error } = await supabaseClient
-            .from('pharmacies')
-            .update({
-                normal_delivery_fee: normalFee,
-                sameday_delivery_fee: samedayFee
-            })
-            .eq('id', currentPharmacy.id);
-
-        if (error) throw error;
-
-        currentPharmacy.normal_delivery_fee = normalFee;
-        currentPharmacy.sameday_delivery_fee = samedayFee;
-        showToast(`Saved Delivery Fees: Normal LKR ${formatCurrency(normalFee)} | Same-Day LKR ${formatCurrency(samedayFee)}`);
-    } catch (err) {
-        showToast(err.message || 'Failed to save delivery fees.', 'error');
-    } finally {
-        if (btn) btn.disabled = false;
-    }
-
-    // Inside your Save Delivery Prices function in PharmaConnect admin.html:
-
+    // 2. Get Toggle States
     const allowNormal = document.getElementById('toggleNormalDelivery').checked;
     const allowSameday = document.getElementById('toggleSamedayDelivery').checked;
     const allowPickup = document.getElementById('toggleSelfPickup').checked;
@@ -238,6 +237,7 @@ async function handleSaveDeliveryFees(e) {
     const allowCard = document.getElementById('togglePayCard').checked;
     const allowCod = document.getElementById('togglePayCod').checked;
 
+    // 3. Run Safety Validations BEFORE touching the database
     if (!allowNormal && !allowSameday && !allowPickup) {
         alert("Please keep at least one Delivery or Pickup method enabled!");
         return;
@@ -247,19 +247,60 @@ async function handleSaveDeliveryFees(e) {
         return;
     }
 
-    const { error } = await supabaseClient
-        .from('pharmacies')
-        .update({
-            normal_delivery_fee: normalFee,
-            sameday_delivery_fee: samedayFee,
-            allow_normal_delivery: allowNormal,
-            allow_sameday_delivery: allowSameday,
-            allow_pickup: allowPickup,
-            allow_bank_transfer: allowBank,
-            allow_card_payment: allowCard,
-            allow_cod: allowCod
-        })
-        .eq('id', currentPharmacyId);
+    const btn = document.getElementById('btn-save-delivery-fees');
+    const originalText = btn ? btn.innerHTML : 'Save';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+    }
+
+    try {
+        // 4. Perform a SINGLE Supabase Update for everything
+        const { error } = await supabaseClient
+            .from('pharmacies')
+            .update({
+                normal_delivery_fee: normalFee,
+                sameday_delivery_fee: samedayFee,
+                allow_normal_delivery: allowNormal,
+                allow_sameday_delivery: allowSameday,
+                allow_pickup: allowPickup,
+                allow_bank_transfer: allowBank,
+                allow_card_payment: allowCard,
+                allow_cod: allowCod
+            })
+            .eq('id', currentPharmacy.id); // Uses the correct ID variable
+
+        if (error) throw error;
+
+        // 5. Update local memory so the UI doesn't require a refresh
+        currentPharmacy.normal_delivery_fee = normalFee;
+        currentPharmacy.sameday_delivery_fee = samedayFee;
+        currentPharmacy.allow_normal_delivery = allowNormal;
+        currentPharmacy.allow_sameday_delivery = allowSameday;
+        currentPharmacy.allow_pickup = allowPickup;
+        currentPharmacy.allow_bank_transfer = allowBank;
+        currentPharmacy.allow_card_payment = allowCard;
+        currentPharmacy.allow_cod = allowCod;
+
+        if (typeof showToast === 'function') {
+            showToast(`Saved Delivery Fees: Normal LKR ${normalFee} | Same-Day LKR ${samedayFee}`);
+        } else {
+            alert("Delivery prices and customer options updated successfully!");
+        }
+        
+    } catch (err) {
+        console.error("Save Error:", err);
+        if (typeof showToast === 'function') {
+            showToast(err.message || 'Failed to save delivery fees.', 'error');
+        } else {
+            alert("Error saving settings: " + err.message);
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    }
 }
 
 // ==================== BANKING DETAILS MANAGEMENT (`pharmacy_banks`) ====================
