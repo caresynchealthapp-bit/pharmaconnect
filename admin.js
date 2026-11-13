@@ -240,7 +240,7 @@ async function handleSaveDeliveryFees(e) {
     const allowCard = document.getElementById('togglePayCard').checked;
     const allowCod = document.getElementById('togglePayCod').checked;
 
-    // 3. Run Safety Validations BEFORE touching the database
+    // 3. Safety Validations
     if (!allowNormal && !allowSameday && !allowPickup) {
         alert("Please keep at least one Delivery or Pickup method enabled!");
         return;
@@ -258,7 +258,7 @@ async function handleSaveDeliveryFees(e) {
     }
 
     try {
-        // 4. Perform a SINGLE Supabase Update for everything
+        // 4. Single Supabase Update
         const { error } = await supabaseClient
             .from('pharmacies')
             .update({
@@ -271,11 +271,11 @@ async function handleSaveDeliveryFees(e) {
                 allow_card_payment: allowCard,
                 allow_cod: allowCod
             })
-            .eq('id', currentPharmacy.id); // Uses the correct ID variable
+            .eq('id', currentPharmacy.id); 
 
         if (error) throw error;
 
-        // 5. Update local memory so the UI doesn't require a refresh
+        // 5. Update local memory
         currentPharmacy.normal_delivery_fee = normalFee;
         currentPharmacy.sameday_delivery_fee = samedayFee;
         currentPharmacy.allow_normal_delivery = allowNormal;
@@ -285,19 +285,11 @@ async function handleSaveDeliveryFees(e) {
         currentPharmacy.allow_card_payment = allowCard;
         currentPharmacy.allow_cod = allowCod;
 
-        if (typeof showToast === 'function') {
-            showToast(`Saved Delivery Fees: Normal LKR ${normalFee} | Same-Day LKR ${samedayFee}`);
-        } else {
-            alert("Delivery prices and customer options updated successfully!");
-        }
+        showToast(`Saved Delivery Fees: Normal LKR ${normalFee} | Same-Day LKR ${samedayFee}`);
         
     } catch (err) {
         console.error("Save Error:", err);
-        if (typeof showToast === 'function') {
-            showToast(err.message || 'Failed to save delivery fees.', 'error');
-        } else {
-            alert("Error saving settings: " + err.message);
-        }
+        showToast(err.message || 'Failed to save delivery fees.', 'error');
     } finally {
         if (btn) {
             btn.disabled = false;
