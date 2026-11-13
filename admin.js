@@ -229,9 +229,6 @@ async function handleSaveDeliveryFees(e) {
         if (btn) btn.disabled = false;
     }
 
-    // Inside your Save Delivery Prices function in PharmaConnect admin.html:
-    const samedayFee = parseFloat(document.getElementById('samedayDeliveryFeeInput').value || 500);
-
     const allowNormal = document.getElementById('toggleNormalDelivery').checked;
     const allowSameday = document.getElementById('toggleSamedayDelivery').checked;
     const allowPickup = document.getElementById('toggleSelfPickup').checked;
