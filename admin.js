@@ -204,7 +204,7 @@ async function handleSaveDeliveryFees(e) {
     e.preventDefault();
     if (!currentPharmacy) return;
 
-    const normalFee = Math.max(0, parseFloat(document.getElementById('normal-delivery-fee-input').value) || 0);
+    const normalFee = parseFloat(document.getElementById('normalDeliveryFeeInput').value || 250);
     const samedayFee = Math.max(0, parseFloat(document.getElementById('sameday-delivery-fee-input').value) || 0);
     const btn = document.getElementById('btn-save-delivery-fees');
     if (btn) btn.disabled = true;
@@ -230,7 +230,6 @@ async function handleSaveDeliveryFees(e) {
     }
 
     // Inside your Save Delivery Prices function in PharmaConnect admin.html:
-    const normalFee = parseFloat(document.getElementById('normalDeliveryFeeInput').value || 250);
     const samedayFee = parseFloat(document.getElementById('samedayDeliveryFeeInput').value || 500);
 
     const allowNormal = document.getElementById('toggleNormalDelivery').checked;
