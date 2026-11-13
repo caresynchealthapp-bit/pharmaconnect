@@ -112,9 +112,15 @@ async function loadTenantPharmacyDetails(pharmacyId) {
     }
     document.getElementById('link-open-grn').href = `grn.html?pharmacy_id=${encodeURIComponent(data.id)}`;
 
+    // Sync the Pricing Inputs
     const normalFeeInput = document.getElementById('normal-delivery-fee-input');
     const samedayFeeInput = document.getElementById('sameday-delivery-fee-input');
+    
+    if (normalFeeInput) normalFeeInput.value = Number(data.normal_delivery_fee ?? 250).toFixed(2);
+    if (samedayFeeInput) samedayFeeInput.value = Number(data.sameday_delivery_fee ?? 500).toFixed(2);
 
+    // --- SYNC CUSTOMER OPTIONS TOGGLES ---
+    
     // Sync Fulfillment Toggles (Defaults to checked if missing from older DB rows)
     const tNormal = document.getElementById('toggleNormalDelivery');
     if (tNormal) tNormal.checked = currentPharmacy.allow_normal_delivery !== false;
@@ -134,9 +140,6 @@ async function loadTenantPharmacyDetails(pharmacyId) {
 
     const tCod = document.getElementById('togglePayCod');
     if (tCod) tCod.checked = currentPharmacy.allow_cod !== false;
-    
-    if (normalFeeInput) normalFeeInput.value = Number(data.normal_delivery_fee ?? 250).toFixed(2);
-    if (samedayFeeInput) samedayFeeInput.value = Number(data.sameday_delivery_fee ?? 500).toFixed(2);
 
     const savedThemeIdx = localStorage.getItem(`theme_${data.id}`);
     const hashIdx = data.pharmacy_name.length % PHARMACY_THEMES.length;
