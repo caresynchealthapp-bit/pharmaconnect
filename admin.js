@@ -204,29 +204,9 @@ async function handleSaveDeliveryFees(e) {
     e.preventDefault();
     if (!currentPharmacy) return;
 
-    const normalFee = parseFloat(document.getElementById('normalDeliveryFeeInput').value || 250);
-    const samedayFee = parseFloat(document.getElementById('samedayDeliveryFeeInput').value || 500);
+    const normalFee = Math.max(0, parseFloat(document.getElementById('normal-delivery-fee-input').value) || 0);
+    const samedayFee = Math.max(0, parseFloat(document.getElementById('sameday-delivery-fee-input').value) || 0);
     const btn = document.getElementById('btn-save-delivery-fees');
-    // 1. Sync Fulfillment Toggles (Defaults to true if undefined)
-    const tNormal = document.getElementById('toggleNormalDelivery');
-    if (tNormal) tNormal.checked = pharm.allow_normal_delivery !== false;
-
-    const tSameday = document.getElementById('toggleSamedayDelivery');
-    if (tSameday) tSameday.checked = pharm.allow_sameday_delivery !== false;
-
-    const tPickup = document.getElementById('toggleSelfPickup');
-    if (tPickup) tPickup.checked = pharm.allow_pickup !== false;
-
-    // 2. Sync Payment Method Toggles (Defaults to true if undefined)
-    const tBank = document.getElementById('togglePayBank');
-    if (tBank) tBank.checked = pharm.allow_bank_transfer !== false;
-
-    const tCard = document.getElementById('togglePayCard');
-    if (tCard) tCard.checked = pharm.allow_card_payment !== false;
-
-    const tCod = document.getElementById('togglePayCod');
-    if (tCod) tCod.checked = pharm.allow_cod !== false;
-    
     if (btn) btn.disabled = true;
 
     try {
@@ -248,6 +228,10 @@ async function handleSaveDeliveryFees(e) {
     } finally {
         if (btn) btn.disabled = false;
     }
+
+    // Inside your Save Delivery Prices function in PharmaConnect admin.html:
+    const normalFee = parseFloat(document.getElementById('normalDeliveryFeeInput').value || 250);
+    const samedayFee = parseFloat(document.getElementById('samedayDeliveryFeeInput').value || 500);
 
     const allowNormal = document.getElementById('toggleNormalDelivery').checked;
     const allowSameday = document.getElementById('toggleSamedayDelivery').checked;
