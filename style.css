@@ -1439,3 +1439,16 @@ body {
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
+
+.team-tiles-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 20px;
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.member-tile {
+    flex: 0 1 240px; /* Keeps each card a clean, consistent width */
+}
